@@ -38,6 +38,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "platformdirs" },
     { name = "textual" },
     { name = "typer" },
     { name = "uvicorn", extra = ["standard"] },
@@ -46,6 +47,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0" },
+    { name = "platformdirs", specifier = ">=4.3.0" },
     { name = "textual", specifier = ">=2.0.0" },
     { name = "typer", specifier = ">=0.15.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.0" },

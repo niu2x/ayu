@@ -4,7 +4,7 @@ server = FastAPI(title="ayu")
 
 
 @server.get("/health")
-async def health():
+async def health() -> dict:
     return {"status": "ok"}
 
 
