@@ -6,20 +6,20 @@ console = Console()
 app = typer.Typer(
     name="ayu",
     help="A terminal AI agent that surpasses opencode and claudecode.",
-    no_args_is_help=True,
+    no_args_is_help=False,
 )
 
-config_app = typer.Typer(help="管理静态配置 config.json")
-state_app = typer.Typer(help="管理运行态 state.json")
+config_app = typer.Typer(help="管理静态配置 config.json", no_args_is_help=True)
+state_app = typer.Typer(help="管理运行态 state.json", no_args_is_help=True)
 app.add_typer(config_app, name="config")
 app.add_typer(state_app, name="state")
 
 
-@app.command()
-def tui() -> None:
-    """启动 TUI 界面"""
-    from ayu.tui_app import AyuTUIApp
-    AyuTUIApp().run()
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context) -> None:
+    if ctx.invoked_subcommand is None:
+        from ayu.tui_app import AyuTUIApp
+        AyuTUIApp().run()
 
 
 @app.command()

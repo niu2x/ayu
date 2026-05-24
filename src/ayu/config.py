@@ -55,9 +55,9 @@ class Config(BaseModel):
 class State(BaseModel):
     """用户当前选择（运行态，与静态配置分离）"""
 
-    provider: str = "openai"
-    model: str = "gpt-4o"
-    theme: str = "textual-dark"
+    provider: str = "dummy"
+    model: str = "dummy"
+    theme: str = "ansi-dark"
 
 
 def get_config_path() -> Path:

@@ -30,8 +30,7 @@ src/ayu/
 ## 常用命令
 
 ```bash
-uv run ayu          # 显示帮助
-uv run ayu tui      # 启动 TUI
+uv run ayu          # 启动 TUI（无参默认行为）
 uv run ayu serve    # 启动 FastAPI 服务 (默认 127.0.0.1:8000)
 uv run ayu serve --host 0.0.0.0 --port 8080
 uv run ayu --help   # 查看帮助
@@ -48,6 +47,7 @@ uv run ayu state set-state theme <name>                 # 切换主题
 uv sync             # 安装/同步依赖
 uv add <package>    # 添加依赖
 uv lock             # 更新 lock 文件
+uv run python scripts/check.py   # 运行全部检查
 ```
 
 ## 编码约定
@@ -65,15 +65,9 @@ uv lock             # 更新 lock 文件
 
 ## 修改代码后的检查清单
 
-修改代码后，必须逐一执行以下检查，全部通过才能提交：
+修改代码后必须执行检查，全部通过才能提交：
 
-- [ ] **语法检查** — `uv run python -m py_compile src/ayu/<file>.py` 确保无语法错误
-- [ ] **类型检查** — 确认所有函数都有返回类型注解，参数都有类型注解
-- [ ] **引号检查** — 所有字符串使用双引号，无单引号残留
-- [ ] **import 清理** — 移除未使用的 import
-- [ ] **Pydantic 合规** — 确认新数据模型使用 BaseModel，未引入 dataclass 或 TypedDict
-- [ ] **功能验证** — 运行 `uv run ayu --help` 确认 CLI 正常
-- [ ] **git diff 审查** — 检查变更内容，只包含预期文件
+- [ ] **检查脚本** — `uv run python scripts/check.py`
 
 ## 设计原则
 
