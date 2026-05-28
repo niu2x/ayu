@@ -24,7 +24,6 @@ class AyuTUIApp(App):
     ]
     SLASH_COMMANDS = {
         "/help": "显示可用命令",
-        "/clear": "清空聊天窗口",
         "/quit": "退出 ayu",
     }
     CSS = """
@@ -153,9 +152,6 @@ class AyuTUIApp(App):
             case "/help":
                 supported = "、".join(self.SLASH_COMMANDS.keys())
                 chat.add_message("ayu", f"可用命令: {supported}")
-            case "/clear":
-                chat.remove_children()
-                chat.add_message("ayu", "聊天记录已清空")
             case "/quit":
                 self.exit()
             case _:
