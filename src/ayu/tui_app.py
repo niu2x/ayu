@@ -2,6 +2,7 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, VerticalScroll
+from textual.screen import ModalScreen
 from textual.widgets import Footer, Input, OptionList, Static
 from textual.widgets.option_list import Option
 
@@ -10,6 +11,54 @@ class ChatPanel(VerticalScroll):
     def add_message(self, role: str, content: str) -> None:
         self.mount(Static(f"[bold]{role}:[/] {content}"))
         self.scroll_end(animate=False)
+
+
+class ModelPickerScreen(ModalScreen[str | None]):
+    CSS = """
+    ModelPickerScreen {
+        align: center middle;
+        background: transparent;
+    }
+    #model-popup {
+        width: 70;
+        height: auto;
+        max-height: 20;
+        border: round $primary;
+        background: $surface;
+    }
+    #model-title {
+        padding: 0 1;
+    }
+    #model-palette {
+        height: auto;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=False),
+    ]
+
+    def __init__(self, options: list[Option]) -> None:
+        super().__init__()
+        self.options = options
+
+    def compose(self) -> ComposeResult:
+        yield Container(
+            Static("选择模型 (Esc 取消)", id="model-title"),
+            OptionList(*self.options, id="model-palette"),
+            id="model-popup",
+        )
+
+    def on_mount(self) -> None:
+        palette = self.query_one("#model-palette", OptionList)
+        palette.highlighted = 0
+        palette.focus()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(str(event.option.id))
 
 
 class AyuTUIApp(App):
@@ -24,6 +73,7 @@ class AyuTUIApp(App):
     ]
     SLASH_COMMANDS = {
         "/help": "显示可用命令",
+        "/models": "选择当前模型",
         "/quit": "退出 ayu",
     }
     CSS = """
@@ -65,8 +115,8 @@ class AyuTUIApp(App):
     def on_mount(self) -> None:
         from ayu.config import load_config, load_state
         self.config = load_config()
-        state = load_state()
-        self.theme = state.theme
+        self.state = load_state()
+        self.theme = self.state.theme
         chat = self.query_one(ChatPanel)
         chat.add_message("ayu", "Hello! I'm ayu. How can I help you?")
         self.query_one("#chat-input", Input).focus()
@@ -112,11 +162,38 @@ class AyuTUIApp(App):
     def hide_command_popup(self) -> None:
         self.command_popup.display = False
 
-    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        if event.option_list.id != "command-palette":
+    def show_model_popup(self) -> None:
+        options = [
+            Option(f"{provider}/{model}", id=f"{provider}::{model}")
+            for provider, models in self.config.llm.providers.items()
+            for model in models.models.keys()
+        ]
+        if not options:
+            chat = self.query_one(ChatPanel)
+            chat.add_message("ayu", "当前没有可选模型，请先通过 config 命令添加模型")
             return
-        self.fill_input_with_command(str(event.option.id))
-        self.hide_command_popup()
+        self.push_screen(ModelPickerScreen(options), self.on_model_selected)
+
+    def on_model_selected(self, selected: str | None) -> None:
+        self.query_one("#chat-input", Input).focus()
+        if selected is None:
+            return
+        provider, model = selected.split("::", maxsplit=1)
+        self.state.provider = provider
+        self.state.model = model
+        from ayu.config import save_state
+        save_state(self.state)
+        chat = self.query_one(ChatPanel)
+        chat.add_message("ayu", f"已切换模型: {provider}/{model}")
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        option_list_id = event.option_list.id
+        if option_list_id == "command-palette":
+            self.fill_input_with_command(str(event.option.id))
+            self.hide_command_popup()
+            return
+        if option_list_id == "model-palette":
+            return
 
     def fill_input_with_command(self, command: str) -> None:
         input_widget = self.query_one("#chat-input", Input)
@@ -126,23 +203,31 @@ class AyuTUIApp(App):
         input_widget.focus()
 
     def action_command_up(self) -> None:
-        if not self.command_popup.display:
+        palette = self.get_active_option_list()
+        if palette is None:
             return
-        self.command_palette.action_cursor_up()
+        palette.action_cursor_up()
 
     def action_command_down(self) -> None:
-        if not self.command_popup.display:
+        palette = self.get_active_option_list()
+        if palette is None:
             return
-        self.command_palette.action_cursor_down()
+        palette.action_cursor_down()
 
     def action_command_select(self) -> None:
-        if not self.command_popup.display:
+        palette = self.get_active_option_list()
+        if palette is None:
             return
-        self.command_palette.action_select()
+        palette.action_select()
+
+    def get_active_option_list(self) -> OptionList | None:
+        if self.command_popup.display:
+            return self.command_palette
+        return None
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         if action in {"command_up", "command_down", "command_select"}:
-            return self.command_popup.display
+            return self.get_active_option_list() is not None
         return super().check_action(action, parameters)
 
     def handle_command(self, raw_command: str) -> None:
@@ -152,6 +237,8 @@ class AyuTUIApp(App):
             case "/help":
                 supported = "、".join(self.SLASH_COMMANDS.keys())
                 chat.add_message("ayu", f"可用命令: {supported}")
+            case "/models":
+                self.show_model_popup()
             case "/quit":
                 self.exit()
             case _:

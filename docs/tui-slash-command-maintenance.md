@@ -7,6 +7,7 @@
 - 输入框首字符输入 `/` 时，显示命令候选面板。
 - 支持上下箭头选择，回车选中并补全到输入框。
 - 回车提交时，`/` 开头文本作为命令执行；普通文本走 LLM 聊天。
+- `/models` 命令可弹出模型列表并切换 `state.provider/state.model`。
 - 不使用 Textual 默认 `ctrl+p` 命令面板（避免和自定义命令系统冲突）。
 
 ## 1. 核心结构
@@ -18,6 +19,8 @@
 - `#chat-input`：主输入框。
 - `#command-popup`：命令候选容器（输入框上方）。
 - `#command-palette`：`OptionList` 命令列表。
+- `#model-popup`：模型选择容器（居中弹出）。
+- `#model-palette`：模型选择 `OptionList`。
 
 ## 2. 为什么禁用默认命令面板
 
@@ -52,6 +55,10 @@
 - `show_command_popup(prefix: str)`
   - 根据前缀过滤 `SLASH_COMMANDS`，刷新 `OptionList`。
 
+- `show_model_popup()`
+  - 读取 `config.llm.providers` 下所有模型，渲染为 `provider/model` 列表。
+  - 无模型时在聊天区给出提示。
+
 - `fill_input_with_command(command: str)`
   - 选中命令后，写入 `command + COMMAND_SUFFIX`。
   - 默认 `COMMAND_SUFFIX = " "`，目的是：
@@ -59,8 +66,12 @@
     2) 避免回填后再次触发面板重开。
 
 - `action_command_up/down/select()` + `check_action(...)`
-  - 仅在弹窗显示时接管上下/回车按键。
+  - 仅在任一 `OptionList` 弹窗显示时接管上下/回车按键。
   - 其它动作必须回退 `super().check_action(...)`，否则会误伤全局快捷键。
+
+- `on_option_list_option_selected(...)`
+  - `command-palette`：回填 slash 命令。
+  - `model-palette`：更新 `state.provider` / `state.model`，并 `save_state(...)`。
 
 ## 4. 常见坑位
 
@@ -98,5 +109,6 @@
 1. 输入 `/` 后，候选框出现在输入框附近。
 2. `↑/↓` 有高亮变化，`Enter` 一次即可选中并关闭面板。
 3. 回车在面板关闭时可正常发送消息。
-4. `/help`、`/clear`、`/quit` 行为正确。
-5. `uv run python scripts/check.py` 全部通过。
+4. `/help`、`/models`、`/quit` 行为正确。
+5. `/models` 选中后，`state.json` 中 provider/model 已更新。
+6. `uv run python scripts/check.py` 全部通过。
