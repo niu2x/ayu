@@ -7,6 +7,8 @@
 - 输入框首字符输入 `/` 时，显示命令候选面板。
 - 支持上下箭头选择，回车选中并补全到输入框。
 - 回车提交时，`/` 开头文本作为命令执行；普通文本走 LLM 聊天。
+- LLM 响应使用 streaming 增量渲染到聊天区。
+- 应用启动后会后台执行一次最小请求 warmup，降低首条真实消息的首包延迟。
 - `/models` 命令可弹出模型列表并切换 `state.provider/state.model`。
 - `/log` 命令可切换右侧日志侧栏，展示运行期 logger 输出。
 - 不使用 Textual 默认 `ctrl+p` 命令面板（避免和自定义命令系统冲突）。
@@ -82,6 +84,13 @@
 - `TUILogHandler.emit(...)`
   - 将 Python `logging` 记录转发到右侧日志面板。
 
+- `ChatPanel.begin_stream_message(...)` / `update_stream_message(...)`
+  - 先插入一条空的 ayu 消息，再随 chunk 增量更新文本，实现流式显示。
+
+- `warmup_llm()` + `llm.warmup_stream()`
+  - 启动后执行最小 `stream=True` 请求（`max_tokens=1`），仅用于预热连接与请求路径。
+  - 预热失败只记录日志，不影响主聊天流程。
+
 ## 4. 常见坑位
 
 ### 4.1 `ctrl+p` 打开后报错 `TypeError: 'str' object is not callable`
@@ -103,6 +112,14 @@
 通常是回车 binding 总是生效，抢走了输入框提交。
 
 修复思路：`check_action` 对 `command_select` 返回 `self.command_popup.display`，弹窗关闭时不拦截回车。
+
+### 4.4 流式返回没有输出
+
+检查点：
+
+- `llm.py` 是否走 `chat_stream(...)` 而非一次性 `chat(...)`。
+- OpenAI 请求是否设置 `stream=True`。
+- TUI 是否在 `async for chunk in chat_stream(...)` 中持续更新同一条消息组件。
 
 ## 5. 后续扩展建议（低风险顺序）
 

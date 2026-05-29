@@ -1,5 +1,7 @@
 import asyncio
 import logging
+from collections.abc import AsyncIterator
+
 from openai import AsyncOpenAI
 
 from ayu.config import LLMProviderConfig, load_config, load_state
@@ -11,7 +13,6 @@ _runtime_client: AsyncOpenAI | None = None
 
 
 def _build_openai_client(provider_config: LLMProviderConfig) -> AsyncOpenAI:
-    logging.getLogger(__name__).info("_build_openai_client")
     return AsyncOpenAI(
         api_key=provider_config.api_key,
         base_url=provider_config.base_url or None,
@@ -19,34 +20,24 @@ def _build_openai_client(provider_config: LLMProviderConfig) -> AsyncOpenAI:
 
 
 def initialize_runtime(force: bool = False) -> None:
-
-    logging.getLogger(__name__).info("initialize_runtime 1")
     global _runtime_config, _runtime_state, _runtime_client
 
-    logging.getLogger(__name__).info("initialize_runtime 2")
     if _runtime_config is not None and _runtime_state is not None and not force:
         return
 
-    logging.getLogger(__name__).info("initialize_runtime 3")
     _runtime_config = load_config()
-    logging.getLogger(__name__).info("initialize_runtime 4")
     _runtime_state = load_state()
-    logging.getLogger(__name__).info("initialize_runtime 5")
     _runtime_client = None
 
     if _runtime_state.provider == "dummy":
         return
 
-    logging.getLogger(__name__).info("initialize_runtime 6")
     provider_config = _runtime_config.llm.providers.get(_runtime_state.provider)
-    logging.getLogger(__name__).info("initialize_runtime 7")
     if provider_config is None:
         return
 
     if provider_config.api_style == "openai":
-        logging.getLogger(__name__).info("initialize_runtime 8")
         _runtime_client = _build_openai_client(provider_config)
-        logging.getLogger(__name__).info("initialize_runtime 9")
 
 
 def update_runtime_selection(provider: str, model: str) -> None:
@@ -71,38 +62,90 @@ def update_runtime_selection(provider: str, model: str) -> None:
 
 
 async def chat(messages: list[dict]) -> str:
+    parts: list[str] = []
+    async for chunk in chat_stream(messages):
+        parts.append(chunk)
+    return "".join(parts)
+
+
+async def chat_stream(messages: list[dict]) -> AsyncIterator[str]:
+    logging.getLogger("ayu").info("开始请求模型 4")
+
     if _runtime_state is None:
-        return "运行态未初始化，请先调用 initialize_runtime()"
+        yield "运行态未初始化，请先调用 initialize_runtime()"
+        return
 
     if _runtime_state.provider == "dummy":
         await asyncio.sleep(0.3)
-        return "OK"
+        yield "OK"
+        return
 
     if _runtime_config is None:
-        return "配置未初始化"
+        yield "配置未初始化"
+        return
 
+    logging.getLogger("ayu").info("开始请求模型 5")
     provider_config = _runtime_config.llm.providers.get(_runtime_state.provider)
+    logging.getLogger("ayu").info("开始请求模型 6")
     if provider_config is None:
-        return (
+        yield (
             f"提供商 [bold]{_runtime_state.provider}[/] 未配置。"
             f"请先运行: ayu config set-provider {_runtime_state.provider}"
         )
+        return
 
     if provider_config.api_style == "openai":
-        return await _chat_openai(provider_config, _runtime_state.model, messages)
+        logging.getLogger("ayu").info("开始请求模型 7")
+        async for chunk in _chat_openai_stream(provider_config, _runtime_state.model, messages):
+            yield chunk
+        return
 
-    return f"不支持的 API 风格: {provider_config.api_style}"
+    yield f"不支持的 API 风格: {provider_config.api_style}"
 
 
-async def _chat_openai(
+async def _chat_openai_stream(
     provider_config: LLMProviderConfig, model: str, messages: list[dict]
-) -> str:
+) -> AsyncIterator[str]:
+    logging.getLogger("ayu").info("开始请求模型 8")
     client = _runtime_client or _build_openai_client(provider_config)
+    logging.getLogger("ayu").info("开始请求模型 9")
     model_config = provider_config.models.get(model)
-    response = await client.chat.completions.create(
+    logging.getLogger("ayu").info("开始请求模型 10")
+    stream = await client.chat.completions.create(
         model=model,
         messages=messages,
+        stream=True,
         max_tokens=model_config.max_tokens if model_config else None,
         temperature=model_config.temperature if model_config else None,
     )
-    return response.choices[0].message.content or ""
+    async for chunk in stream:
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta.content
+        if delta:
+            yield delta
+
+
+async def warmup_stream() -> bool:
+    if _runtime_state is None or _runtime_config is None:
+        return False
+    if _runtime_state.provider == "dummy":
+        return False
+
+    provider_config = _runtime_config.llm.providers.get(_runtime_state.provider)
+    if provider_config is None:
+        return False
+    if provider_config.api_style != "openai":
+        return False
+
+    client = _runtime_client or _build_openai_client(provider_config)
+    stream = await client.chat.completions.create(
+        model=_runtime_state.model,
+        messages=[{"role": "user", "content": "ping"}],
+        stream=True,
+        max_tokens=1,
+        temperature=0,
+    )
+    async for _ in stream:
+        break
+    return True

@@ -9,12 +9,22 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, Input, OptionList, Static
 from textual.widgets.option_list import Option
 
-from ayu.llm import chat
+from ayu.llm import chat_stream
 
 
 class ChatPanel(VerticalScroll):
     def add_message(self, role: str, content: str) -> None:
         self.mount(Static(f"[bold]{role}:[/] {content}"))
+        self.scroll_end(animate=False)
+
+    def begin_stream_message(self, role: str) -> Static:
+        message = Static(f"[bold]{role}:[/] ")
+        self.mount(message)
+        self.scroll_end(animate=False)
+        return message
+
+    def update_stream_message(self, message: Static, role: str, content: str) -> None:
+        message.update(f"[bold]{role}:[/] {content}")
         self.scroll_end(animate=False)
 
 
@@ -173,7 +183,7 @@ class AyuTUIApp(App):
         self.logger.info("日志系统已初始化")
 
         initialize_runtime(force=True)
-        
+        self.warmup_llm()
 
     def log_to_panel(self, message: str) -> None:
         if hasattr(self, "log_panel"):
@@ -310,6 +320,22 @@ class AyuTUIApp(App):
     async def call_llm(self, message: str) -> None:
         self.logger.info("开始请求模型")
         chat_panel = self.query_one(ChatPanel)
-        response = await chat([{"role": "user", "content": message}])
+        stream_message = chat_panel.begin_stream_message("ayu")
+        chunks: list[str] = []
+        async for chunk in chat_stream([{"role": "user", "content": message}]):
+            chunks.append(chunk)
+            chat_panel.update_stream_message(stream_message, "ayu", "".join(chunks))
         self.logger.info("模型响应完成")
-        chat_panel.add_message("ayu", response)
+
+    @work(exclusive=True)
+    async def warmup_llm(self) -> None:
+        from ayu.llm import warmup_stream
+
+        self.logger.info("开始预热模型连接")
+        try:
+            warmed = await warmup_stream()
+        except Exception as exc:
+            self.logger.warning(f"模型预热失败: {exc}")
+            return
+        if warmed:
+            self.logger.info("模型预热完成")
