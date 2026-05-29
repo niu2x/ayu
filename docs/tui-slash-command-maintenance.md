@@ -8,6 +8,7 @@
 - 支持上下箭头选择，回车选中并补全到输入框。
 - 回车提交时，`/` 开头文本作为命令执行；普通文本走 LLM 聊天。
 - `/models` 命令可弹出模型列表并切换 `state.provider/state.model`。
+- `/log` 命令可切换右侧日志侧栏，展示运行期 logger 输出。
 - 不使用 Textual 默认 `ctrl+p` 命令面板（避免和自定义命令系统冲突）。
 
 ## 1. 核心结构
@@ -21,6 +22,7 @@
 - `#command-palette`：`OptionList` 命令列表。
 - `#model-popup`：模型选择容器（居中弹出）。
 - `#model-palette`：模型选择 `OptionList`。
+- `#log-panel`：右侧日志面板（默认隐藏，可通过 `/log` 开关）。
 
 ## 2. 为什么禁用默认命令面板
 
@@ -59,6 +61,10 @@
   - 读取 `config.llm.providers` 下所有模型，渲染为 `provider/model` 列表。
   - 无模型时在聊天区给出提示。
 
+- `toggle_log_panel()`
+  - 切换日志面板显示状态。
+  - 日志通过 `TUILogHandler` 写入 `LogPanel`。
+
 - `fill_input_with_command(command: str)`
   - 选中命令后，写入 `command + COMMAND_SUFFIX`。
   - 默认 `COMMAND_SUFFIX = " "`，目的是：
@@ -72,6 +78,9 @@
 - `on_option_list_option_selected(...)`
   - `command-palette`：回填 slash 命令。
   - `model-palette`：更新 `state.provider` / `state.model`，并 `save_state(...)`。
+
+- `TUILogHandler.emit(...)`
+  - 将 Python `logging` 记录转发到右侧日志面板。
 
 ## 4. 常见坑位
 
@@ -111,4 +120,5 @@
 3. 回车在面板关闭时可正常发送消息。
 4. `/help`、`/models`、`/quit` 行为正确。
 5. `/models` 选中后，`state.json` 中 provider/model 已更新。
-6. `uv run python scripts/check.py` 全部通过。
+6. `/log` 可切换日志面板，且能看到请求开始/结束日志。
+7. `uv run python scripts/check.py` 全部通过。

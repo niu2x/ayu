@@ -1,16 +1,36 @@
+import logging
+import sys
+
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, VerticalScroll
+from textual.containers import Container, Horizontal, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Input, OptionList, Static
 from textual.widgets.option_list import Option
+
+from ayu.llm import chat
 
 
 class ChatPanel(VerticalScroll):
     def add_message(self, role: str, content: str) -> None:
         self.mount(Static(f"[bold]{role}:[/] {content}"))
         self.scroll_end(animate=False)
+
+
+class LogPanel(VerticalScroll):
+    def add_log(self, content: str) -> None:
+        self.mount(Static(content))
+        self.scroll_end(animate=False)
+
+
+class TUILogHandler(logging.Handler):
+    def __init__(self, app: "AyuTUIApp") -> None:
+        super().__init__()
+        self.app = app
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.app.log_to_panel(self.format(record))
 
 
 class ModelPickerScreen(ModalScreen[str | None]):
@@ -73,6 +93,7 @@ class AyuTUIApp(App):
     ]
     SLASH_COMMANDS = {
         "/help": "显示可用命令",
+        "/log": "切换日志侧栏",
         "/models": "选择当前模型",
         "/quit": "退出 ayu",
     }
@@ -80,11 +101,20 @@ class AyuTUIApp(App):
     Screen {
         layout: vertical;
     }
-    ChatPanel {
-        border: solid $primary;
+    #main-row {
         height: 1fr;
         margin: 1;
+    }
+    ChatPanel {
+        border: solid $primary;
+        width: 1fr;
         padding: 1;
+    }
+    #log-panel {
+        border: solid $accent;
+        width: 45;
+        padding: 1;
+        display: none;
     }
     Input {
         margin: 0 1 1 1;
@@ -107,21 +137,51 @@ class AyuTUIApp(App):
     """
 
     def compose(self) -> ComposeResult:
-        yield ChatPanel()
+        yield Horizontal(
+            ChatPanel(),
+            LogPanel(id="log-panel"),
+            id="main-row",
+        )
         yield Container(OptionList(id="command-palette"), id="command-popup")
         yield Input(placeholder="Type a message and press Enter...", id="chat-input")
         yield Footer()
 
     def on_mount(self) -> None:
         from ayu.config import load_config, load_state
+        from ayu.llm import initialize_runtime
+
         self.config = load_config()
         self.state = load_state()
         self.theme = self.state.theme
         chat = self.query_one(ChatPanel)
         chat.add_message("ayu", "Hello! I'm ayu. How can I help you?")
         self.query_one("#chat-input", Input).focus()
+        self.log_panel = self.query_one("#log-panel", LogPanel)
+        self.log_visible = False
         self.command_popup = self.query_one("#command-popup", Container)
         self.command_palette = self.query_one("#command-palette", OptionList)
+        self.logger = logging.getLogger("ayu")
+        self.logger.setLevel(logging.INFO)
+        self.logger.propagate = False
+        self.log_handler = TUILogHandler(self)
+        self.log_handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+        stderr_handler = logging.StreamHandler(sys.stderr)
+        stderr_handler.setFormatter(logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s"))
+        file_handler = logging.FileHandler("ayu.log", encoding="utf-8")
+        file_handler.setFormatter(logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s"))
+        self.logger.handlers = [self.log_handler, stderr_handler, file_handler]
+        self.logger.info("日志系统已初始化")
+
+        initialize_runtime(force=True)
+        
+
+    def log_to_panel(self, message: str) -> None:
+        if hasattr(self, "log_panel"):
+            self.log_panel.add_log(message)
+
+    def toggle_log_panel(self) -> None:
+        self.log_visible = not self.log_visible
+        self.log_panel.display = self.log_visible
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if self.should_show_command_popup(event.value):
@@ -163,26 +223,26 @@ class AyuTUIApp(App):
         self.command_popup.display = False
 
     def show_model_popup(self) -> None:
-        options = [
+        options = [Option("dummy/dummy", id="dummy::dummy")]
+        options.extend([
             Option(f"{provider}/{model}", id=f"{provider}::{model}")
             for provider, models in self.config.llm.providers.items()
             for model in models.models.keys()
-        ]
-        if not options:
-            chat = self.query_one(ChatPanel)
-            chat.add_message("ayu", "当前没有可选模型，请先通过 config 命令添加模型")
-            return
+        ])
         self.push_screen(ModelPickerScreen(options), self.on_model_selected)
 
     def on_model_selected(self, selected: str | None) -> None:
+        from ayu.config import save_state
+        from ayu.llm import update_runtime_selection
+
         self.query_one("#chat-input", Input).focus()
         if selected is None:
             return
         provider, model = selected.split("::", maxsplit=1)
         self.state.provider = provider
         self.state.model = model
-        from ayu.config import save_state
         save_state(self.state)
+        update_runtime_selection(provider, model)
         chat = self.query_one(ChatPanel)
         chat.add_message("ayu", f"已切换模型: {provider}/{model}")
 
@@ -239,6 +299,8 @@ class AyuTUIApp(App):
                 chat.add_message("ayu", f"可用命令: {supported}")
             case "/models":
                 self.show_model_popup()
+            case "/log":
+                self.toggle_log_panel()
             case "/quit":
                 self.exit()
             case _:
@@ -246,7 +308,8 @@ class AyuTUIApp(App):
 
     @work(exclusive=False)
     async def call_llm(self, message: str) -> None:
-        from ayu.llm import chat
+        self.logger.info("开始请求模型")
         chat_panel = self.query_one(ChatPanel)
         response = await chat([{"role": "user", "content": message}])
+        self.logger.info("模型响应完成")
         chat_panel.add_message("ayu", response)
