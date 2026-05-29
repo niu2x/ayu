@@ -14,29 +14,30 @@ from ayu.llm import chat_stream
 
 class ChatPanel(VerticalScroll):
     def add_message(self, role: str, content: str) -> None:
-        self.mount(Static(f"[bold]{role}:[/] {content}"))
+        message_class = "message-user" if role == "you" else "message-ai"
+        self.mount(Static(content, classes=f"chat-message {message_class}"))
         self.scroll_end(animate=False)
 
     def begin_stream_message(self, role: str) -> Static:
-        message = Static(f"[bold]{role}:[/] ")
+        message = Static("", classes="chat-message message-ai")
         self.mount(message)
         self.scroll_end(animate=False)
         return message
 
     def begin_reasoning_message(self, role: str) -> Static:
-        message = Static(f"[dim][bold]{role} thinking:[/] [/] ")
+        message = Static("", classes="chat-message")
         message.display = False
         self.mount(message)
         self.scroll_end(animate=False)
         return message
 
     def update_stream_message(self, message: Static, role: str, content: str) -> None:
-        message.update(f"[bold]{role}:[/] {content}")
+        message.update(content)
         self.scroll_end(animate=False)
 
     def update_reasoning_message(self, message: Static, role: str, content: str) -> None:
         message.display = True
-        message.update(f"[dim][bold]{role} thinking:[/] {content}[/]")
+        message.update(f"[dim]{content}[/]")
         self.scroll_end(animate=False)
 
 
@@ -131,6 +132,22 @@ class AyuTUIApp(App):
         border: solid $primary;
         width: 1fr;
         padding: 1;
+    }
+    .chat-message {
+        margin: 0 0 2 0;
+        padding: 0 1;
+        width: 100%;
+    }
+    .message-user {
+        background: $panel;
+        text-style: bold;
+        text-align: left;
+        border-left: heavy $accent;
+        padding: 0 1 0 2;
+    }
+    .message-ai {
+        background: $surface;
+        text-align: left;
     }
     #log-panel {
         border: solid $accent;
