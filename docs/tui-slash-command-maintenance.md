@@ -8,6 +8,7 @@
 - 支持上下箭头选择，回车选中并补全到输入框。
 - 回车提交时，`/` 开头文本作为命令执行；普通文本走 LLM 聊天。
 - LLM 响应使用 streaming 增量渲染到聊天区。
+- streaming 使用结构化事件流：`reasoning` 与 `content` 分开渲染。
 - 应用启动后会后台执行一次最小请求 warmup，降低首条真实消息的首包延迟。
 - `/models` 命令可弹出模型列表并切换 `state.provider/state.model`。
 - `/log` 命令可切换右侧日志侧栏，展示运行期 logger 输出。
@@ -87,6 +88,13 @@
 - `ChatPanel.begin_stream_message(...)` / `update_stream_message(...)`
   - 先插入一条空的 ayu 消息，再随 chunk 增量更新文本，实现流式显示。
 
+- `ChatPanel.begin_reasoning_message(...)` / `update_reasoning_message(...)`
+  - 针对推理模型的思考内容单独渲染（`ayu thinking:`），与最终回答分离。
+
+- `llm.chat_stream(...)`
+  - 返回结构化事件：`{"type": "reasoning"|"content", "text": ...}`。
+  - OpenAI 流中同时读取 `delta.content` 与 `delta.reasoning_content`（兼容 `reasoning` 字段）。
+
 - `warmup_llm()` + `llm.warmup_stream()`
   - 启动后执行最小 `stream=True` 请求（`max_tokens=1`），仅用于预热连接与请求路径。
   - 预热失败只记录日志，不影响主聊天流程。
@@ -120,6 +128,14 @@
 - `llm.py` 是否走 `chat_stream(...)` 而非一次性 `chat(...)`。
 - OpenAI 请求是否设置 `stream=True`。
 - TUI 是否在 `async for chunk in chat_stream(...)` 中持续更新同一条消息组件。
+
+### 4.5 DeepSeek 有 thinking 但界面不显示
+
+检查点：
+
+- 流式 chunk 中是否包含 `reasoning_content` 或 `reasoning`。
+- `chat_stream(...)` 是否把 reasoning 字段转成 `type=reasoning` 事件。
+- TUI 是否处理了 `reasoning` 事件并调用 `update_reasoning_message(...)`。
 
 ## 5. 后续扩展建议（低风险顺序）
 

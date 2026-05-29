@@ -23,8 +23,20 @@ class ChatPanel(VerticalScroll):
         self.scroll_end(animate=False)
         return message
 
+    def begin_reasoning_message(self, role: str) -> Static:
+        message = Static(f"[dim][bold]{role} thinking:[/] [/] ")
+        message.display = False
+        self.mount(message)
+        self.scroll_end(animate=False)
+        return message
+
     def update_stream_message(self, message: Static, role: str, content: str) -> None:
         message.update(f"[bold]{role}:[/] {content}")
+        self.scroll_end(animate=False)
+
+    def update_reasoning_message(self, message: Static, role: str, content: str) -> None:
+        message.display = True
+        message.update(f"[dim][bold]{role} thinking:[/] {content}[/]")
         self.scroll_end(animate=False)
 
 
@@ -320,10 +332,16 @@ class AyuTUIApp(App):
     async def call_llm(self, message: str) -> None:
         self.logger.info("开始请求模型")
         chat_panel = self.query_one(ChatPanel)
+        reasoning_message = chat_panel.begin_reasoning_message("ayu")
+        reasoning_chunks: list[str] = []
         stream_message = chat_panel.begin_stream_message("ayu")
         chunks: list[str] = []
-        async for chunk in chat_stream([{"role": "user", "content": message}]):
-            chunks.append(chunk)
+        async for event in chat_stream([{"role": "user", "content": message}]):
+            if event.type == "reasoning":
+                reasoning_chunks.append(event.text)
+                chat_panel.update_reasoning_message(reasoning_message, "ayu", "".join(reasoning_chunks))
+                continue
+            chunks.append(event.text)
             chat_panel.update_stream_message(stream_message, "ayu", "".join(chunks))
         self.logger.info("模型响应完成")
 

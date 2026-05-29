@@ -1,8 +1,10 @@
 import asyncio
 import logging
 from collections.abc import AsyncIterator
+from typing import Literal
 
 from openai import AsyncOpenAI
+from pydantic import BaseModel
 
 from ayu.config import LLMProviderConfig, load_config, load_state
 
@@ -10,6 +12,11 @@ from ayu.config import LLMProviderConfig, load_config, load_state
 _runtime_config = None
 _runtime_state = None
 _runtime_client: AsyncOpenAI | None = None
+
+
+class StreamEvent(BaseModel):
+    type: Literal["reasoning", "content"]
+    text: str
 
 
 def _build_openai_client(provider_config: LLMProviderConfig) -> AsyncOpenAI:
@@ -63,49 +70,52 @@ def update_runtime_selection(provider: str, model: str) -> None:
 
 async def chat(messages: list[dict]) -> str:
     parts: list[str] = []
-    async for chunk in chat_stream(messages):
-        parts.append(chunk)
+    async for event in chat_stream(messages):
+        parts.append(event.text)
     return "".join(parts)
 
 
-async def chat_stream(messages: list[dict]) -> AsyncIterator[str]:
+async def chat_stream(messages: list[dict]) -> AsyncIterator[StreamEvent]:
     logging.getLogger("ayu").info("开始请求模型 4")
 
     if _runtime_state is None:
-        yield "运行态未初始化，请先调用 initialize_runtime()"
+        yield StreamEvent(type="content", text="运行态未初始化，请先调用 initialize_runtime()")
         return
 
     if _runtime_state.provider == "dummy":
         await asyncio.sleep(0.3)
-        yield "OK"
+        yield StreamEvent(type="content", text="OK")
         return
 
     if _runtime_config is None:
-        yield "配置未初始化"
+        yield StreamEvent(type="content", text="配置未初始化")
         return
 
     logging.getLogger("ayu").info("开始请求模型 5")
     provider_config = _runtime_config.llm.providers.get(_runtime_state.provider)
     logging.getLogger("ayu").info("开始请求模型 6")
     if provider_config is None:
-        yield (
-            f"提供商 [bold]{_runtime_state.provider}[/] 未配置。"
-            f"请先运行: ayu config set-provider {_runtime_state.provider}"
+        yield StreamEvent(
+            type="content",
+            text=(
+                f"提供商 [bold]{_runtime_state.provider}[/] 未配置。"
+                f"请先运行: ayu config set-provider {_runtime_state.provider}"
+            ),
         )
         return
 
     if provider_config.api_style == "openai":
         logging.getLogger("ayu").info("开始请求模型 7")
-        async for chunk in _chat_openai_stream(provider_config, _runtime_state.model, messages):
-            yield chunk
+        async for event in _chat_openai_stream(provider_config, _runtime_state.model, messages):
+            yield event
         return
 
-    yield f"不支持的 API 风格: {provider_config.api_style}"
+    yield StreamEvent(type="content", text=f"不支持的 API 风格: {provider_config.api_style}")
 
 
 async def _chat_openai_stream(
     provider_config: LLMProviderConfig, model: str, messages: list[dict]
-) -> AsyncIterator[str]:
+) -> AsyncIterator[StreamEvent]:
     logging.getLogger("ayu").info("开始请求模型 8")
     client = _runtime_client or _build_openai_client(provider_config)
     logging.getLogger("ayu").info("开始请求模型 9")
@@ -121,9 +131,13 @@ async def _chat_openai_stream(
     async for chunk in stream:
         if not chunk.choices:
             continue
-        delta = chunk.choices[0].delta.content
-        if delta:
-            yield delta
+        delta_data = chunk.choices[0].delta.model_dump(exclude_none=True)
+        reasoning_text = delta_data.get("reasoning_content") or delta_data.get("reasoning")
+        if isinstance(reasoning_text, str) and reasoning_text:
+            yield StreamEvent(type="reasoning", text=reasoning_text)
+        content_text = delta_data.get("content")
+        if isinstance(content_text, str) and content_text:
+            yield StreamEvent(type="content", text=content_text)
 
 
 async def warmup_stream() -> bool:
