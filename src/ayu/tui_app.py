@@ -6,7 +6,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Input, OptionList, Static
+from textual.widgets import Footer, Input, Markdown, OptionList, Static
 from textual.widgets.option_list import Option
 
 from ayu.llm import chat_stream
@@ -14,12 +14,14 @@ from ayu.llm import chat_stream
 
 class ChatPanel(VerticalScroll):
     def add_message(self, role: str, content: str) -> None:
-        message_class = "message-user" if role == "you" else "message-ai"
-        self.mount(Static(content, classes=f"chat-message {message_class}"))
+        if role == "you":
+            self.mount(Static(content, classes="chat-message message-user"))
+        else:
+            self.mount(Markdown(content, classes="chat-message message-ai"))
         self.scroll_end(animate=False)
 
-    def begin_stream_message(self, role: str) -> Static:
-        message = Static("", classes="chat-message message-ai")
+    def begin_stream_message(self, role: str) -> Markdown:
+        message = Markdown("", classes="chat-message message-ai")
         self.mount(message)
         self.scroll_end(animate=False)
         return message
@@ -31,7 +33,7 @@ class ChatPanel(VerticalScroll):
         self.scroll_end(animate=False)
         return message
 
-    def update_stream_message(self, message: Static, role: str, content: str) -> None:
+    def update_stream_message(self, message: Markdown, role: str, content: str) -> None:
         message.update(content)
         self.scroll_end(animate=False)
 
@@ -353,13 +355,18 @@ class AyuTUIApp(App):
         reasoning_chunks: list[str] = []
         stream_message = chat_panel.begin_stream_message("ayu")
         chunks: list[str] = []
+        pending_line = ""
         async for event in chat_stream([{"role": "user", "content": message}]):
             if event.type == "reasoning":
                 reasoning_chunks.append(event.text)
                 chat_panel.update_reasoning_message(reasoning_message, "ayu", "".join(reasoning_chunks))
                 continue
             chunks.append(event.text)
-            chat_panel.update_stream_message(stream_message, "ayu", "".join(chunks))
+            pending_line += event.text
+            if "\n" in pending_line:
+                chat_panel.update_stream_message(stream_message, "ayu", "".join(chunks))
+                pending_line = pending_line.rsplit("\n", maxsplit=1)[-1]
+        chat_panel.update_stream_message(stream_message, "ayu", "".join(chunks))
         self.logger.info("模型响应完成")
 
     @work(exclusive=True)
