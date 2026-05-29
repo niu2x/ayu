@@ -7,6 +7,7 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from ayu.config import LLMProviderConfig, load_config, load_state
+from ayu.tools import ToolRegistry
 
 
 _runtime_config = None
@@ -15,7 +16,7 @@ _runtime_client: AsyncOpenAI | None = None
 
 
 class StreamEvent(BaseModel):
-    type: Literal["reasoning", "content"]
+    type: Literal["reasoning", "content", "tool_call"]
     text: str
 
 
@@ -68,14 +69,17 @@ def update_runtime_selection(provider: str, model: str) -> None:
         _runtime_client = _build_openai_client(provider_config)
 
 
-async def chat(messages: list[dict]) -> str:
+async def chat(messages: list[dict], tool_registry: ToolRegistry | None = None) -> str:
     parts: list[str] = []
-    async for event in chat_stream(messages):
+    async for event in chat_stream(messages, tool_registry=tool_registry):
         parts.append(event.text)
     return "".join(parts)
 
 
-async def chat_stream(messages: list[dict]) -> AsyncIterator[StreamEvent]:
+async def chat_stream(
+    messages: list[dict],
+    tool_registry: ToolRegistry | None = None,
+) -> AsyncIterator[StreamEvent]:
     logging.getLogger("ayu").info("开始请求模型 4")
 
     if _runtime_state is None:
@@ -106,7 +110,12 @@ async def chat_stream(messages: list[dict]) -> AsyncIterator[StreamEvent]:
 
     if provider_config.api_style == "openai":
         logging.getLogger("ayu").info("开始请求模型 7")
-        async for event in _chat_openai_stream(provider_config, _runtime_state.model, messages):
+        async for event in _chat_openai_stream(
+            provider_config,
+            _runtime_state.model,
+            messages,
+            tool_registry=tool_registry,
+        ):
             yield event
         return
 
@@ -114,30 +123,89 @@ async def chat_stream(messages: list[dict]) -> AsyncIterator[StreamEvent]:
 
 
 async def _chat_openai_stream(
-    provider_config: LLMProviderConfig, model: str, messages: list[dict]
+    provider_config: LLMProviderConfig,
+    model: str,
+    messages: list[dict],
+    tool_registry: ToolRegistry | None = None,
 ) -> AsyncIterator[StreamEvent]:
     logging.getLogger("ayu").info("开始请求模型 8")
     client = _runtime_client or _build_openai_client(provider_config)
     logging.getLogger("ayu").info("开始请求模型 9")
     model_config = provider_config.models.get(model)
-    logging.getLogger("ayu").info("开始请求模型 10")
-    stream = await client.chat.completions.create(
-        model=model,
-        messages=messages,
-        stream=True,
-        max_tokens=model_config.max_tokens if model_config else None,
-        temperature=model_config.temperature if model_config else None,
-    )
-    async for chunk in stream:
-        if not chunk.choices:
-            continue
-        delta_data = chunk.choices[0].delta.model_dump(exclude_none=True)
-        reasoning_text = delta_data.get("reasoning_content") or delta_data.get("reasoning")
-        if isinstance(reasoning_text, str) and reasoning_text:
-            yield StreamEvent(type="reasoning", text=reasoning_text)
-        content_text = delta_data.get("content")
-        if isinstance(content_text, str) and content_text:
-            yield StreamEvent(type="content", text=content_text)
+    while True:
+        logging.getLogger("ayu").info("开始请求模型 10")
+        request_options: dict[str, object] = {
+            "model": model,
+            "messages": messages,
+            "stream": True,
+            "max_tokens": model_config.max_tokens if model_config else None,
+            "temperature": model_config.temperature if model_config else None,
+        }
+        if tool_registry is not None:
+            tools = tool_registry.openai_tools()
+            if tools:
+                request_options["tools"] = tools
+
+        stream = await client.chat.completions.create(**request_options)
+        pending_tool_calls: dict[int, dict[str, str]] = {}
+        async for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta_data = chunk.choices[0].delta.model_dump(exclude_none=True)
+            reasoning_text = delta_data.get("reasoning_content") or delta_data.get("reasoning")
+            if isinstance(reasoning_text, str) and reasoning_text:
+                yield StreamEvent(type="reasoning", text=reasoning_text)
+            content_text = delta_data.get("content")
+            if isinstance(content_text, str) and content_text:
+                yield StreamEvent(type="content", text=content_text)
+            tool_calls = delta_data.get("tool_calls")
+            if isinstance(tool_calls, list):
+                for call in tool_calls:
+                    index = int(call.get("index", 0))
+                    entry = pending_tool_calls.setdefault(
+                        index,
+                        {"id": "", "name": "", "arguments": ""},
+                    )
+                    if isinstance(call.get("id"), str):
+                        entry["id"] = call["id"]
+                    function_data = call.get("function", {})
+                    if isinstance(function_data.get("name"), str):
+                        entry["name"] = function_data["name"]
+                    if isinstance(function_data.get("arguments"), str):
+                        entry["arguments"] += function_data["arguments"]
+
+        if not pending_tool_calls or tool_registry is None:
+            break
+
+        for call in pending_tool_calls.values():
+            tool_name = call["name"]
+            arguments = call["arguments"]
+            tool_id = call["id"] or f"call_{tool_name}"
+            yield StreamEvent(type="tool_call", text=f"调用工具: {tool_name}")
+            tool_result = await tool_registry.execute(tool_name, arguments)
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": tool_id,
+                            "type": "function",
+                            "function": {
+                                "name": tool_name,
+                                "arguments": arguments,
+                            },
+                        }
+                    ],
+                }
+            )
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_id,
+                    "content": tool_result,
+                }
+            )
 
 
 async def warmup_stream() -> bool:

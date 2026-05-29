@@ -354,10 +354,16 @@ class AyuTUIApp(App):
         stream_message = chat_panel.begin_stream_message("ayu")
         chunks: list[str] = []
         pending_line = ""
-        async for event in chat_stream(self.runtime.session.to_llm_messages()):
+        async for event in chat_stream(
+            self.runtime.session.to_llm_messages(),
+            tool_registry=self.runtime.tool_registry,
+        ):
             if event.type == "reasoning":
                 reasoning_chunks.append(event.text)
                 chat_panel.update_reasoning_message(reasoning_message, "ayu", "".join(reasoning_chunks))
+                continue
+            if event.type == "tool_call":
+                self.logger.info(event.text)
                 continue
             chunks.append(event.text)
             pending_line += event.text
