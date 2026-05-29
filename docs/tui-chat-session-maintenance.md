@@ -7,6 +7,7 @@
 - 输入框首字符输入 `/` 时，显示命令候选面板。
 - 支持上下箭头选择，回车选中并补全到输入框。
 - 回车提交时，`/` 开头文本作为命令执行；普通文本走 LLM 聊天。
+- 会话基于 `Session` 聚合多条消息，不再是每次请求单轮对话。
 - LLM 响应使用 streaming 增量渲染到聊天区。
 - streaming 使用结构化事件流：`reasoning` 与 `content` 分开渲染。
 - 应用启动后会后台执行一次最小请求 warmup，降低首条真实消息的首包延迟。
@@ -26,6 +27,16 @@
 - `#model-popup`：模型选择容器（居中弹出）。
 - `#model-palette`：模型选择 `OptionList`。
 - `#log-panel`：右侧日志面板（默认隐藏，可通过 `/log` 开关）。
+
+新增模块：`src/ayu/session.py`
+
+- `SessionMessage`：统一消息结构，支持 `system/user/assistant/tool`。
+- `Session`：维护消息列表，并提供 `to_llm_messages()` 转换。
+
+新增模块：`src/ayu/chat_runtime.py`
+
+- `build_chat_runtime()`：构建 UI 无关的聊天运行时（config/state/session + LLM runtime 初始化）。
+- `ChatRuntime`：统一承载 `config/state/session`，供 TUI/GUI/API 复用。
 
 ## 2. 为什么禁用默认命令面板
 
@@ -94,6 +105,16 @@
 - `llm.chat_stream(...)`
   - 返回结构化事件：`{"type": "reasoning"|"content", "text": ...}`。
   - OpenAI 流中同时读取 `delta.content` 与 `delta.reasoning_content`（兼容 `reasoning` 字段）。
+
+- `Session`
+  - `on_mount` 时写入一条 `system` 消息（来自 `config.agent.system_prompt`）。
+  - 用户发送时写入 `user` 消息。
+  - 流式结束后写入 `assistant` 消息。
+  - LLM 调用改为传入 `session.to_llm_messages()`，确保多轮上下文连续。
+
+- `build_chat_runtime()`
+  - 在 UI 层之外完成初始化：读取 config/state、创建 session、写入 system prompt、初始化 LLM runtime。
+  - TUI 仅消费运行时对象，不负责初始化细节。
 
 - `warmup_llm()` + `llm.warmup_stream()`
   - 启动后执行最小 `stream=True` 请求（`max_tokens=1`），仅用于预热连接与请求路径。

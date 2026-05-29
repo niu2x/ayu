@@ -188,14 +188,13 @@ class AyuTUIApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        from ayu.config import load_config, load_state
-        from ayu.llm import initialize_runtime
+        from ayu.chat_runtime import build_chat_runtime
 
-        self.config = load_config()
-        self.state = load_state()
-        self.theme = self.state.theme
+        self.runtime = build_chat_runtime()
+        self.theme = self.runtime.state.theme
         chat = self.query_one(ChatPanel)
-        chat.add_message("ayu", "Hello! I'm ayu. How can I help you?")
+        welcome = "Hello! I'm ayu. How can I help you?"
+        chat.add_message("ayu", welcome)
         self.query_one("#chat-input", Input).focus()
         self.log_panel = self.query_one("#log-panel", LogPanel)
         self.log_visible = False
@@ -212,8 +211,6 @@ class AyuTUIApp(App):
         file_handler.setFormatter(logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s"))
         self.logger.handlers = [self.log_handler, stderr_handler, file_handler]
         self.logger.info("日志系统已初始化")
-
-        initialize_runtime(force=True)
         self.warmup_llm()
 
     def log_to_panel(self, message: str) -> None:
@@ -243,6 +240,7 @@ class AyuTUIApp(App):
 
         chat = self.query_one(ChatPanel)
         chat.add_message("you", event.value)
+        self.runtime.session.add_message("user", event.value)
         self.query_one("#chat-input", Input).clear()
         self.call_llm(event.value)
 
@@ -267,7 +265,7 @@ class AyuTUIApp(App):
         options = [Option("dummy/dummy", id="dummy::dummy")]
         options.extend([
             Option(f"{provider}/{model}", id=f"{provider}::{model}")
-            for provider, models in self.config.llm.providers.items()
+            for provider, models in self.runtime.config.llm.providers.items()
             for model in models.models.keys()
         ])
         self.push_screen(ModelPickerScreen(options), self.on_model_selected)
@@ -280,9 +278,9 @@ class AyuTUIApp(App):
         if selected is None:
             return
         provider, model = selected.split("::", maxsplit=1)
-        self.state.provider = provider
-        self.state.model = model
-        save_state(self.state)
+        self.runtime.state.provider = provider
+        self.runtime.state.model = model
+        save_state(self.runtime.state)
         update_runtime_selection(provider, model)
         chat = self.query_one(ChatPanel)
         chat.add_message("ayu", f"已切换模型: {provider}/{model}")
@@ -356,7 +354,7 @@ class AyuTUIApp(App):
         stream_message = chat_panel.begin_stream_message("ayu")
         chunks: list[str] = []
         pending_line = ""
-        async for event in chat_stream([{"role": "user", "content": message}]):
+        async for event in chat_stream(self.runtime.session.to_llm_messages()):
             if event.type == "reasoning":
                 reasoning_chunks.append(event.text)
                 chat_panel.update_reasoning_message(reasoning_message, "ayu", "".join(reasoning_chunks))
@@ -366,7 +364,9 @@ class AyuTUIApp(App):
             if "\n" in pending_line:
                 chat_panel.update_stream_message(stream_message, "ayu", "".join(chunks))
                 pending_line = pending_line.rsplit("\n", maxsplit=1)[-1]
-        chat_panel.update_stream_message(stream_message, "ayu", "".join(chunks))
+        assistant_content = "".join(chunks)
+        chat_panel.update_stream_message(stream_message, "ayu", assistant_content)
+        self.runtime.session.add_message("assistant", assistant_content)
         self.logger.info("模型响应完成")
 
     @work(exclusive=True)
