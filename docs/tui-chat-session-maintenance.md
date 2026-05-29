@@ -107,7 +107,7 @@
   - OpenAI 流中同时读取 `delta.content` 与 `delta.reasoning_content`（兼容 `reasoning` 字段）。
 
 - `Session`
-  - `on_mount` 时写入一条 `system` 消息（来自 `config.agent.system_prompt`）。
+  - 运行时初始化时写入一条 `system` 消息（来自 `chat_runtime.py` 内置常量）。
   - 用户发送时写入 `user` 消息。
   - 流式结束后写入 `assistant` 消息。
   - LLM 调用改为传入 `session.to_llm_messages()`，确保多轮上下文连续。

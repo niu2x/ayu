@@ -37,9 +37,6 @@ class TUIConfig(BaseModel):
 class AgentConfig(BaseModel):
     """Agent 行为配置"""
 
-    system_prompt: str = (
-        "You are ayu, a helpful AI coding assistant."
-    )
     max_tool_rounds: int = 25
     auto_approve: bool = False
 
