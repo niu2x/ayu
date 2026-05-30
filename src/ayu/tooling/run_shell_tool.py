@@ -155,7 +155,8 @@ def register_run_shell_tool(registry: ToolRegistryLike, workspace_root: Path) ->
     @registry.register(
         name="run_shell",
         description=(
-            "Use this to execute one shell command and get structured result. "
+            "Use this as a fallback tool to execute one shell command when no specialized tool fits the task. "
+            "Prefer dedicated tools for file reading/editing, patching, or other specific tasks before using run_shell. "
             "Input: command, optional timeout_seconds/workdir/max_output_bytes. "
             "Returns exit code, stdout, stderr, timeout status, and duration in JSON. "
             "For chained commands, the tool pre-checks each sub-command and requests permission by read/write path before execution."

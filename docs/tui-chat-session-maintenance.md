@@ -146,6 +146,7 @@
   - `run_shell` 平台分支：Windows 走 PowerShell，Ubuntu/macOS 走 bash。
   - `run_shell` 会先拆分组合命令（如 `cmd1 && cmd2`），逐条提取读写路径（含 `<`、`>`、`>>`、`1>`、`2>` 重定向）。
   - 所有子命令的路径权限都通过后才执行；授权 key 统一为 `read::<abs_path>` / `write::<abs_path>`。
+  - `run_shell` 定位为通用兜底工具：优先使用专用工具（如 `read_file`、`write_file`、`apply_patch`），仅在无专用工具可用时使用。
   - 当前内置识别示例：`git status/diff/log`（读目录）、`git add/commit`（写目录）、`grep`（读输入文件）、`find`（读搜索路径）、`cp`（读源写目标）、`mv`（写源写目标）等。
   - 若存在无法识别的子命令，会回退到整条命令 hash 授权（`shell::<sha256(command)>`）。
   - 特例：当有效目录为当前工作目录且命令是无重定向的 `git status` / `git diff` 时，视为只读命令，免授权执行。
