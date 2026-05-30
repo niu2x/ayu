@@ -133,6 +133,10 @@
 - `PermissionScreen`（`src/ayu/tui_app.py`）
   - 当工具请求权限时弹窗，让用户选择拒绝、允许一次或本会话一直允许。
   - TUI 在 `on_mount()` 中把 `request_permission` 回调注册到 `tool_registry`。
+  - `PermissionRequest` 带 `target_kind`（`path`/`command`），弹窗会按类型显示“路径”或“命令”标签。
+
+- `permission_actions.py`（`src/ayu/tooling/permission_actions.py`）
+  - 统一定义权限动作常量（`read_file/write_file/run_shell`），避免字符串散落在各工具模块。
 
 - `warmup_llm()` + `llm.warmup_stream()`
   - 启动后执行最小 `stream=True` 请求（`max_tokens=1`），仅用于预热连接与请求路径。

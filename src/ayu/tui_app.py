@@ -143,9 +143,10 @@ class PermissionScreen(ModalScreen[Literal["deny", "allow_once", "allow_session"
 
     def compose(self) -> ComposeResult:
         action_text = f"授权请求: {self.request.action}"
+        target_label = "路径" if self.request.target_kind == "path" else "命令"
         detail_text = (
             f"原因: {self.request.reason}\n"
-            f"目标: {self.request.target}\n"
+            f"{target_label}: {self.request.target}\n"
             f"key: {self.request.key}"
         )
         options = [
