@@ -1,9 +1,8 @@
 from ayu.config import Config, State, load_config, load_state
 from ayu.llm import initialize_runtime
 from ayu.session import Session
+from ayu.system_prompt import build_system_prompt
 from ayu.tools import ToolRegistry, build_default_tool_registry
-
-SYSTEM_PROMPT = "You are ayu, a helpful AI coding assistant."
 
 
 class ChatRuntime:
@@ -24,7 +23,7 @@ def build_chat_runtime() -> ChatRuntime:
     config = load_config()
     state = load_state()
     session = Session()
-    session.add_message("system", SYSTEM_PROMPT)
+    session.add_message("system", build_system_prompt())
     initialize_runtime(force=True)
     tool_registry = build_default_tool_registry()
     return ChatRuntime(

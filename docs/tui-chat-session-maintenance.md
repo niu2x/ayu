@@ -107,7 +107,7 @@
   - OpenAI 流中同时读取 `delta.content` 与 `delta.reasoning_content`（兼容 `reasoning` 字段）。
 
 - `Session`
-  - 运行时初始化时写入一条 `system` 消息（来自 `chat_runtime.py` 内置常量）。
+  - 运行时初始化时写入一条 `system` 消息（由 `src/ayu/system_prompt.py` 的 pipeline 生成）。
   - 用户发送时写入 `user` 消息。
   - 流式结束后写入 `assistant` 消息。
   - LLM 调用改为传入 `session.to_llm_messages()`，确保多轮上下文连续。
@@ -115,6 +115,10 @@
 - `build_chat_runtime()`
   - 在 UI 层之外完成初始化：读取 config/state、创建 session、写入 system prompt、初始化 LLM runtime。
   - TUI 仅消费运行时对象，不负责初始化细节。
+
+- `build_system_prompt()`（`src/ayu/system_prompt.py`）
+  - system prompt 改为多段拼接 pipeline，而非单一常量。
+  - 当前已接入环境片段：当前工作目录、是否 git 仓库、当前操作系统、当前时间。
 
 - `build_default_tool_registry()`（`src/ayu/tools.py`）
   - 注册默认工具：`write_file`、`read_file`、`feedback`、`run_shell`。
