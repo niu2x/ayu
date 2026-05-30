@@ -83,6 +83,21 @@ uv run python scripts/check.py   # 运行全部检查
 4. **模型中立** — 通过标准 API 接入，不走逆向工程
 5. **开箱即用** — 无参数启动 TUI，--help 完善
 
+## Tool Description 规范
+
+tool 的 `description` 主要写给 agent，不是写给开发者看实现细节。目标是让 agent 清楚：
+
+1. **什么时候用**（触发场景）
+2. **怎么用**（关键参数与输入格式）
+3. **能做什么**（能力边界与主要结果）
+
+编写规则：
+
+- 优先写使用语义，不写实现细节（例如不要写 asyncio、内部库名、内部函数名）。
+- 对输入格式敏感的工具（如 `apply_patch`）必须在描述里给最小格式约束（例如需要 Begin/End、支持哪些指令）。
+- 说明失败边界或前置条件（如“仅限工作区内路径，越界会触发授权”）。
+- 保持简洁，但要足够可执行，避免“过短导致 agent 不知道如何调用”。
+
 ## Git 规范
 
 - 使用 conventional commits: `feat:` `fix:` `chore:` `refactor:` `docs:`

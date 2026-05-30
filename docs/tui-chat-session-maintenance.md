@@ -121,7 +121,7 @@
   - 当前已接入环境片段：当前工作目录、是否 git 仓库、当前操作系统、当前时间。
 
 - `build_default_tool_registry()`（`src/ayu/tools.py`）
-  - 注册默认工具：`write_file`、`read_file`、`feedback`、`run_shell`。
+  - 注册默认工具：`write_file`、`read_file`、`feedback`、`run_shell`、`apply_patch`。
   - `read_file` 使用 `start_line` + `line_count` 读取。
   - 默认从第 1 行开始读取 200 行，`line_count` 最大 1000。
   - 返回内容统一带行号，便于后续基于行号继续编辑或复查。
@@ -133,6 +133,11 @@
   - `run_shell` 平台分支：Windows 走 PowerShell，Ubuntu/macOS 走 bash。
   - `run_shell` 每次执行都会触发授权回调：以完整命令字符串（包含参数、重定向等）计算 SHA-256 作为授权 key。
   - 授权决策支持 `deny` / `allow_once` / `allow_session`，其中 `allow_session` 在本次会话内缓存。
+  - `apply_patch` 支持结构化 patch：`*** Add File`、`*** Update File`、`*** Delete File`、`*** Move to`。
+  - `apply_patch` 修改工作目录外路径时同样会触发授权回调。
+  - `apply_patch` 内置结构校验和 hunk 精确报错（定位到第几个 hunk 与未命中上下文片段）。
+  - `apply_patch` 支持 `Update File` 中纯 `+` hunk 按 `@@` 行号位置插入，不再仅依赖上下文替换。
+  - `apply_patch` 支持在 `@@ ... @@` 后追加锚点文本；当存在锚点时，会校验 `@@` 行号位置对应文本是否匹配，不匹配会报错。
 
 - `PermissionScreen`（`src/ayu/tui_app.py`）
   - 当工具请求权限时弹窗，让用户选择拒绝、允许一次或本会话一直允许。

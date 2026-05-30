@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from ayu.tooling.permission_actions import PermissionAction
 from ayu.tooling import (
+    register_apply_patch_tool,
     register_feedback_tool,
     register_read_file_tool,
     register_run_shell_tool,
@@ -125,5 +126,6 @@ def build_default_tool_registry() -> ToolRegistry:
     register_read_file_tool(registry, workspace_root)
     register_feedback_tool(registry)
     register_run_shell_tool(registry, workspace_root)
+    register_apply_patch_tool(registry, workspace_root)
 
     return registry

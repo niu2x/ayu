@@ -24,7 +24,12 @@ class ToolRegistryLike(Protocol):
 def register_run_shell_tool(registry: ToolRegistryLike, workspace_root: Path) -> None:
     @registry.register(
         name="run_shell",
-        description="Run shell command with asyncio subprocess and return structured output.",
+        description=(
+            "Use this to execute one shell command and get structured result. "
+            "Input: command, optional timeout_seconds/workdir/max_output_bytes. "
+            "Returns exit code, stdout, stderr, timeout status, and duration in JSON. "
+            "Each command requires user permission by command hash before execution."
+        ),
         parameters_model=RunShellParameters,
     )
     async def run_shell(
