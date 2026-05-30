@@ -89,6 +89,9 @@ def _extract_command_path_accesses(
         elif len(args) >= 1 and args[0] == "log":
             add("read", ".")
             recognized = True
+        elif len(args) >= 1 and args[0] == "add":
+            add("write", ".")
+            recognized = True
         elif len(args) >= 1 and args[0] == "commit":
             add("write", ".")
             recognized = True

@@ -32,9 +32,20 @@ def _build_environment_prompt() -> str:
     )
 
 
+def _build_agents_prompt() -> str:
+    agents_file = Path.cwd().resolve() / "AGENTS.md"
+    if not agents_file.exists() or not agents_file.is_file():
+        return ""
+    content = agents_file.read_text("utf-8").strip()
+    if not content:
+        return ""
+    return f"Project instructions from AGENTS.md:\n{content}"
+
+
 def build_system_prompt() -> str:
     sections = [
         _build_base_prompt(),
         _build_environment_prompt(),
+        _build_agents_prompt(),
     ]
     return "\n\n".join(section for section in sections if section.strip())

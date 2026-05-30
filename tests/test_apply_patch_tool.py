@@ -312,6 +312,17 @@ def test_extract_command_path_accesses_git_log(tmp_path: Path) -> None:
     }
 
 
+def test_extract_command_path_accesses_git_add(tmp_path: Path) -> None:
+    workspace = tmp_path.resolve()
+    cwd = workspace
+    accesses, next_cwd, recognized = _extract_command_path_accesses("git add .", cwd, workspace)
+    assert recognized
+    assert next_cwd == cwd
+    assert {(item.mode, item.path) for item in accesses} == {
+        ("write", workspace),
+    }
+
+
 def test_extract_command_path_accesses_find(tmp_path: Path) -> None:
     workspace = tmp_path.resolve()
     cwd = workspace

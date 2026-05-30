@@ -437,7 +437,7 @@ class AyuTUIApp(App):
     async def call_llm(self, message: str) -> None:
         self.logger.info("开始请求模型")
         chat_panel = self.query_one(ChatPanel)
-        reasoning_message = chat_panel.begin_reasoning_message("ayu")
+        reasoning_message: Static | None = None
         reasoning_chunks: list[str] = []
         stream_message = chat_panel.begin_stream_message("ayu")
         chunks: list[str] = []
@@ -447,11 +447,15 @@ class AyuTUIApp(App):
             tool_registry=self.runtime.tool_registry,
         ):
             if event.type == "reasoning":
+                if reasoning_message is None:
+                    reasoning_message = chat_panel.begin_reasoning_message("ayu")
+                    reasoning_chunks = []
                 reasoning_chunks.append(event.text)
                 chat_panel.update_reasoning_message(reasoning_message, "ayu", "".join(reasoning_chunks))
                 continue
             if event.type == "tool_call":
                 self.logger.info(event.text)
+                reasoning_message = None
                 continue
             chunks.append(event.text)
             pending_line += event.text
