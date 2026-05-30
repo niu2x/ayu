@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from ayu.tools import PermissionRequest, build_default_tool_registry
+from ayu.tooling.run_shell_tool import _is_readonly_git_command
 
 
 @pytest.mark.asyncio
@@ -238,3 +239,13 @@ async def test_apply_patch_outside_workspace_requires_permission(
     result = await registry.execute("apply_patch", json.dumps({"patch": patch}))
     assert "未获授权" in result
     assert outside.read_text("utf-8") == "outside\n"
+
+
+def test_run_shell_readonly_git_command_detection(tmp_path: Path) -> None:
+    workspace = tmp_path.resolve()
+    assert _is_readonly_git_command("git status", workspace, workspace)
+    assert _is_readonly_git_command("git diff -- src", workspace, workspace)
+    assert not _is_readonly_git_command("git status > out.txt", workspace, workspace)
+    assert not _is_readonly_git_command("git diff > out.txt", workspace, workspace)
+    assert not _is_readonly_git_command("git commit -m x", workspace, workspace)
+    assert not _is_readonly_git_command("git status", workspace / "sub", workspace)

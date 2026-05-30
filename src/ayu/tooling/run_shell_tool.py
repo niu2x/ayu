@@ -15,6 +15,24 @@ class RunShellParameters(BaseModel):
     max_output_bytes: int = 51200
 
 
+def _resolve_workdir(workdir: str | None, workspace_root: Path) -> Path:
+    if workdir is None:
+        return workspace_root
+    target = Path(workdir).expanduser()
+    if not target.is_absolute():
+        target = workspace_root / target
+    return target.resolve()
+
+
+def _is_readonly_git_command(command: str, workdir: Path, workspace_root: Path) -> bool:
+    if workdir != workspace_root:
+        return False
+    normalized = command.strip()
+    if ">" in normalized:
+        return False
+    return normalized.startswith("git status") or normalized.startswith("git diff")
+
+
 class ToolRegistryLike(Protocol):
     def register(self, *args: object, **kwargs: object) -> object: ...
 
@@ -52,22 +70,24 @@ def register_run_shell_tool(registry: ToolRegistryLike, workspace_root: Path) ->
         if max_output_bytes > 1024 * 1024:
             return "执行失败: max_output_bytes 不能大于 1048576"
 
-        command_hash = compute_shell_command_hash(cleaned_command)
-        allowed = await registry.request_permission(
-            PermissionRequest(
-                action=RUN_SHELL_ACTION,
-                target_kind="command",
-                key=f"shell::{command_hash}",
-                target=cleaned_command,
-                reason=f"shell 命令执行需要用户授权（workspace: {workspace_root}）",
+        resolved_workdir = _resolve_workdir(workdir, workspace_root)
+        if not _is_readonly_git_command(cleaned_command, resolved_workdir, workspace_root):
+            command_hash = compute_shell_command_hash(cleaned_command)
+            allowed = await registry.request_permission(
+                PermissionRequest(
+                    action=RUN_SHELL_ACTION,
+                    target_kind="command",
+                    key=f"shell::{command_hash}",
+                    target=cleaned_command,
+                    reason=f"shell 命令执行需要用户授权（workspace: {workspace_root}）",
+                )
             )
-        )
-        if not allowed:
-            return (
-                "执行失败: 当前 shell 命令未授权。\n"
-                f"command_hash: {command_hash}\n"
-                "用户已拒绝或未完成授权。"
-            )
+            if not allowed:
+                return (
+                    "执行失败: 当前 shell 命令未授权。\n"
+                    f"command_hash: {command_hash}\n"
+                    "用户已拒绝或未完成授权。"
+                )
 
         result = await run_shell_command(
             command=cleaned_command,

@@ -132,6 +132,7 @@
   - `run_shell` 使用 asyncio + subprocess 执行命令，返回结构化 JSON（exit code/stdout/stderr/超时/耗时）。
   - `run_shell` 平台分支：Windows 走 PowerShell，Ubuntu/macOS 走 bash。
   - `run_shell` 每次执行都会触发授权回调：以完整命令字符串（包含参数、重定向等）计算 SHA-256 作为授权 key。
+  - 特例：当 `workdir` 为当前工作目录且命令是无重定向的 `git status` / `git diff` 时，视为只读命令，免授权执行。
   - 授权决策支持 `deny` / `allow_once` / `allow_session`，其中 `allow_session` 在本次会话内缓存。
   - `apply_patch` 支持结构化 patch：`*** Add File`、`*** Update File`、`*** Delete File`、`*** Move to`。
   - `apply_patch` 修改工作目录外路径时同样会触发授权回调。
