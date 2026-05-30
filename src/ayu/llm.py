@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from collections.abc import AsyncIterator
 from typing import Literal
@@ -185,7 +186,16 @@ async def _chat_openai_stream(
             tool_name = call["name"]
             arguments = call["arguments"]
             tool_id = call["id"] or f"call_{tool_name}"
-            yield StreamEvent(type="tool_call", text=f"正在调用工具: {tool_name}")
+            tool_call_text = f"正在调用工具: {tool_name}"
+            if tool_name == "run_shell":
+                try:
+                    parsed_arguments = json.loads(arguments) if arguments else {}
+                except json.JSONDecodeError:
+                    parsed_arguments = {}
+                command_text = parsed_arguments.get("command")
+                if isinstance(command_text, str) and command_text.strip():
+                    tool_call_text = f"正在调用工具: {tool_name} -> `{command_text}`"
+            yield StreamEvent(type="tool_call", text=tool_call_text)
             assistant_tool_calls.append(
                 {
                     "id": tool_id,
@@ -204,7 +214,16 @@ async def _chat_openai_stream(
             arguments = call["arguments"]
             tool_id = call["id"] or f"call_{tool_name}"
             tool_result = await tool_registry.execute(tool_name, arguments)
-            yield StreamEvent(type="tool_call", text=f"工具调用完成: {tool_name}")
+            tool_done_text = f"工具调用完成: {tool_name}"
+            if tool_name == "run_shell":
+                try:
+                    parsed_arguments = json.loads(arguments) if arguments else {}
+                except json.JSONDecodeError:
+                    parsed_arguments = {}
+                command_text = parsed_arguments.get("command")
+                if isinstance(command_text, str) and command_text.strip():
+                    tool_done_text = f"工具调用完成: {tool_name} -> `{command_text}`"
+            yield StreamEvent(type="tool_call", text=tool_done_text)
             messages.append(
                 {
                     "role": "tool",
