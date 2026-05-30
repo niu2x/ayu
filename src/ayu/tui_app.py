@@ -443,7 +443,7 @@ class AyuTUIApp(App):
         stream_chunks: list[str] = []
         chunks: list[str] = []
         pending_line = ""
-        tool_status_message: Static | None = None
+        tool_status_message: Markdown | None = None
         async for event in chat_stream(
             self.runtime.session.to_llm_messages(),
             tool_registry=self.runtime.tool_registry,
@@ -458,9 +458,9 @@ class AyuTUIApp(App):
             if event.type == "tool_call":
                 self.logger.info(event.text)
                 if tool_status_message is None:
-                    tool_status_message = Static("", classes="chat-message")
+                    tool_status_message = Markdown("", classes="chat-message message-ai")
                     chat_panel.mount(tool_status_message)
-                tool_status_message.update(f"[dim]{event.text}[/]")
+                tool_status_message.update(f"🔧 {event.text}")
                 chat_panel.scroll_end(animate=False)
                 if event.text.startswith("正在调用工具:"):
                     reasoning_message = None
