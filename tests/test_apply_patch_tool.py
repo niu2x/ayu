@@ -278,12 +278,35 @@ def test_extract_command_path_accesses_unknown_command(tmp_path: Path) -> None:
     assert not recognized
 
 
+def test_extract_command_path_accesses_git_commit(tmp_path: Path) -> None:
+    workspace = tmp_path.resolve()
+    cwd = workspace
+    accesses, next_cwd, recognized = _extract_command_path_accesses("git commit -m test", cwd, workspace)
+    assert recognized
+    assert next_cwd == cwd
+    assert {(item.mode, item.path) for item in accesses} == {
+        ("write", workspace),
+    }
+
+
+def test_extract_command_path_accesses_git_log(tmp_path: Path) -> None:
+    workspace = tmp_path.resolve()
+    cwd = workspace
+    accesses, next_cwd, recognized = _extract_command_path_accesses("git log --oneline -5", cwd, workspace)
+    assert recognized
+    assert next_cwd == cwd
+    assert {(item.mode, item.path) for item in accesses} == {
+        ("read", workspace),
+    }
+
+
 @pytest.mark.asyncio
 async def test_run_shell_combined_command_requires_all_permissions(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.chdir(tmp_path)
+    outside_output = tmp_path.parent / "out.txt"
     (tmp_path / "a.txt").write_text("a\n", "utf-8")
     registry = build_default_tool_registry()
 
@@ -291,18 +314,17 @@ async def test_run_shell_combined_command_requires_all_permissions(
 
     async def handler(request: PermissionRequest) -> str:
         requested_keys.append(request.key)
-        if request.key == f"write::{tmp_path / 'out.txt'}":
+        if request.key == f"write::{outside_output}":
             return "deny"
         return "allow_once"
 
     registry.set_permission_handler(handler)
     result = await registry.execute(
         "run_shell",
-        json.dumps({"command": "cat a.txt > out.txt && git status"}),
+        json.dumps({"command": f"cat a.txt > {outside_output} && git status"}),
     )
     assert "未授权" in result
-    assert f"read::{tmp_path / 'a.txt'}" in requested_keys
-    assert f"write::{tmp_path / 'out.txt'}" in requested_keys
+    assert f"write::{outside_output}" in requested_keys
 
 
 @pytest.mark.asyncio

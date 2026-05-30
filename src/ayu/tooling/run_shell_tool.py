@@ -86,6 +86,12 @@ def _extract_command_path_accesses(
         if len(args) >= 1 and args[0] in {"status", "diff"}:
             add("read", ".")
             recognized = True
+        elif len(args) >= 1 and args[0] == "log":
+            add("read", ".")
+            recognized = True
+        elif len(args) >= 1 and args[0] == "commit":
+            add("write", ".")
+            recognized = True
     elif base in {"cat", "head", "tail", "less", "more", "ls"}:
         recognized = True
         for arg in args:

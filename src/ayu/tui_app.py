@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 import sys
 from typing import Literal
 
@@ -11,6 +12,7 @@ from textual.widgets import Footer, Input, Markdown, OptionList, Static
 from textual.widgets.option_list import Option
 
 from ayu.llm import chat_stream
+from ayu.config import DIRS
 from ayu.tools import PermissionRequest
 
 
@@ -278,7 +280,9 @@ class AyuTUIApp(App):
         self.log_handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
         stderr_handler = logging.StreamHandler(sys.stderr)
         stderr_handler.setFormatter(logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s"))
-        file_handler = logging.FileHandler("ayu.log", encoding="utf-8")
+        log_dir = Path(DIRS.user_log_dir)
+        log_dir.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(str(log_dir / "ayu.log"), encoding="utf-8")
         file_handler.setFormatter(logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s"))
         self.logger.handlers = [self.log_handler, stderr_handler, file_handler]
         self.logger.info("日志系统已初始化")

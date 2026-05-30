@@ -46,6 +46,16 @@ def path() -> None:
     console.print(get_config_path())
 
 
+@config_app.command("path-log")
+def path_log() -> None:
+    """显示日志目录路径"""
+    from pathlib import Path
+
+    from ayu.config import DIRS
+
+    console.print(Path(DIRS.user_log_dir))
+
+
 @config_app.command()
 def set_provider(
     name: str = typer.Argument(help="提供商名称"),

@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from ayu.config import LLMProviderConfig, load_config, load_state
 from ayu.tools import ToolRegistry
 
+logger = logging.getLogger("ayu.llm")
 
 _runtime_config = None
 _runtime_state = None
@@ -80,8 +81,6 @@ async def chat_stream(
     messages: list[dict],
     tool_registry: ToolRegistry | None = None,
 ) -> AsyncIterator[StreamEvent]:
-    logging.getLogger("ayu").info("开始请求模型 4")
-
     if _runtime_state is None:
         yield StreamEvent(type="content", text="运行态未初始化，请先调用 initialize_runtime()")
         return
@@ -95,9 +94,7 @@ async def chat_stream(
         yield StreamEvent(type="content", text="配置未初始化")
         return
 
-    logging.getLogger("ayu").info("开始请求模型 5")
     provider_config = _runtime_config.llm.providers.get(_runtime_state.provider)
-    logging.getLogger("ayu").info("开始请求模型 6")
     if provider_config is None:
         yield StreamEvent(
             type="content",
@@ -108,8 +105,8 @@ async def chat_stream(
         )
         return
 
+    logger.debug("API 风格: %s, 提供商: %s", provider_config.api_style, _runtime_state.provider)
     if provider_config.api_style == "openai":
-        logging.getLogger("ayu").info("开始请求模型 7")
         async for event in _chat_openai_stream(
             provider_config,
             _runtime_state.model,
@@ -128,12 +125,12 @@ async def _chat_openai_stream(
     messages: list[dict],
     tool_registry: ToolRegistry | None = None,
 ) -> AsyncIterator[StreamEvent]:
-    logging.getLogger("ayu").info("开始请求模型 8")
+    logger.debug("开始流式请求: provider=%s, model=%s, messages=%d",
+                 provider_config.api_style, model, len(messages))
     client = _runtime_client or _build_openai_client(provider_config)
-    logging.getLogger("ayu").info("开始请求模型 9")
     model_config = provider_config.models.get(model)
     while True:
-        logging.getLogger("ayu").info("开始请求模型 10")
+        logger.debug("发送请求: model=%s, messages=%d", model, len(messages))
         request_options: dict[str, object] = {
             "model": model,
             "messages": messages,
