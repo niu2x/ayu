@@ -97,6 +97,27 @@ def _extract_command_path_accesses(
         for arg in args:
             if not arg.startswith("-"):
                 add("read", arg)
+    elif base == "grep":
+        recognized = True
+        file_mode = False
+        for arg in args:
+            if arg.startswith("-") and not file_mode:
+                continue
+            if not file_mode:
+                file_mode = True
+                continue
+            add("read", arg)
+    elif base == "find":
+        recognized = True
+        search_paths: list[str] = []
+        for arg in args:
+            if arg.startswith("-") or arg in {"(", ")", "!"}:
+                break
+            search_paths.append(arg)
+        if not search_paths:
+            search_paths = ["."]
+        for search_path in search_paths:
+            add("read", search_path)
     elif base == "cp" and len(args) >= 2:
         recognized = True
         add("read", args[0])

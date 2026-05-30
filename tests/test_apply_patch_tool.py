@@ -278,6 +278,18 @@ def test_extract_command_path_accesses_unknown_command(tmp_path: Path) -> None:
     assert not recognized
 
 
+def test_extract_command_path_accesses_grep(tmp_path: Path) -> None:
+    workspace = tmp_path.resolve()
+    cwd = workspace
+    accesses, next_cwd, recognized = _extract_command_path_accesses("grep foo a.txt b.txt", cwd, workspace)
+    assert recognized
+    assert next_cwd == cwd
+    assert {(item.mode, item.path) for item in accesses} == {
+        ("read", workspace / "a.txt"),
+        ("read", workspace / "b.txt"),
+    }
+
+
 def test_extract_command_path_accesses_git_commit(tmp_path: Path) -> None:
     workspace = tmp_path.resolve()
     cwd = workspace
@@ -296,6 +308,25 @@ def test_extract_command_path_accesses_git_log(tmp_path: Path) -> None:
     assert recognized
     assert next_cwd == cwd
     assert {(item.mode, item.path) for item in accesses} == {
+        ("read", workspace),
+    }
+
+
+def test_extract_command_path_accesses_find(tmp_path: Path) -> None:
+    workspace = tmp_path.resolve()
+    cwd = workspace
+
+    accesses, next_cwd, recognized = _extract_command_path_accesses("find src tests -name '*.py'", cwd, workspace)
+    assert recognized
+    assert next_cwd == cwd
+    assert {(item.mode, item.path) for item in accesses} == {
+        ("read", workspace / "src"),
+        ("read", workspace / "tests"),
+    }
+
+    accesses_default, _, recognized_default = _extract_command_path_accesses("find -name '*.py'", cwd, workspace)
+    assert recognized_default
+    assert {(item.mode, item.path) for item in accesses_default} == {
         ("read", workspace),
     }
 
