@@ -103,6 +103,11 @@
   - 针对推理模型的思考内容单独渲染（`ayu thinking:`），与最终回答分离。
   - 当出现 `tool_call` 分段时，后续 reasoning 会新起一条 thinking 消息，避免多轮工具调用的 thinking 混在同一块里。
 
+- `tool_call` 事件展示
+  - 工具调用开始时显示一条状态消息：`正在调用工具: <name>`。
+  - 工具调用结束后更新同一条状态消息为：`工具调用完成: <name>`。
+  - 工具调用开始会切分当前流式内容块；调用结束后的新内容会起一条新的 AI 消息，避免跨轮混杂。
+
 - `llm.chat_stream(...)`
   - 返回结构化事件：`{"type": "reasoning"|"content", "text": ...}`。
   - OpenAI 流中同时读取 `delta.content` 与 `delta.reasoning_content`（兼容 `reasoning` 字段）。

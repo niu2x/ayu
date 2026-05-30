@@ -185,7 +185,7 @@ async def _chat_openai_stream(
             tool_name = call["name"]
             arguments = call["arguments"]
             tool_id = call["id"] or f"call_{tool_name}"
-            yield StreamEvent(type="tool_call", text=f"调用工具: {tool_name}")
+            yield StreamEvent(type="tool_call", text=f"正在调用工具: {tool_name}")
             assistant_tool_calls.append(
                 {
                     "id": tool_id,
@@ -204,6 +204,7 @@ async def _chat_openai_stream(
             arguments = call["arguments"]
             tool_id = call["id"] or f"call_{tool_name}"
             tool_result = await tool_registry.execute(tool_name, arguments)
+            yield StreamEvent(type="tool_call", text=f"工具调用完成: {tool_name}")
             messages.append(
                 {
                     "role": "tool",

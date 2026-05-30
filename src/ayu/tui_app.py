@@ -439,9 +439,11 @@ class AyuTUIApp(App):
         chat_panel = self.query_one(ChatPanel)
         reasoning_message: Static | None = None
         reasoning_chunks: list[str] = []
-        stream_message = chat_panel.begin_stream_message("ayu")
+        stream_message: Markdown | None = None
+        stream_chunks: list[str] = []
         chunks: list[str] = []
         pending_line = ""
+        tool_status_message: Static | None = None
         async for event in chat_stream(
             self.runtime.session.to_llm_messages(),
             tool_registry=self.runtime.tool_registry,
@@ -455,15 +457,29 @@ class AyuTUIApp(App):
                 continue
             if event.type == "tool_call":
                 self.logger.info(event.text)
+                if tool_status_message is None:
+                    tool_status_message = Static("", classes="chat-message")
+                    chat_panel.mount(tool_status_message)
+                tool_status_message.update(f"[dim]{event.text}[/]")
+                chat_panel.scroll_end(animate=False)
+                if event.text.startswith("正在调用工具:"):
+                    reasoning_message = None
+                    stream_message = None
+                    stream_chunks = []
                 reasoning_message = None
                 continue
+            if stream_message is None:
+                stream_message = chat_panel.begin_stream_message("ayu")
+                stream_chunks = []
             chunks.append(event.text)
+            stream_chunks.append(event.text)
             pending_line += event.text
             if "\n" in pending_line:
-                chat_panel.update_stream_message(stream_message, "ayu", "".join(chunks))
+                chat_panel.update_stream_message(stream_message, "ayu", "".join(stream_chunks))
                 pending_line = pending_line.rsplit("\n", maxsplit=1)[-1]
         assistant_content = "".join(chunks)
-        chat_panel.update_stream_message(stream_message, "ayu", assistant_content)
+        if stream_message is not None:
+            chat_panel.update_stream_message(stream_message, "ayu", "".join(stream_chunks))
         self.runtime.session.add_message("assistant", assistant_content)
         self.logger.info("模型响应完成")
 
