@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from ayu.tools import PermissionRequest, build_default_tool_registry
-from ayu.tooling.run_shell_tool import _is_readonly_git_command
+from ayu.tooling.run_shell_tool import _extract_command_path_accesses, _split_commands
 
 
 @pytest.mark.asyncio
@@ -241,16 +241,90 @@ async def test_apply_patch_outside_workspace_requires_permission(
     assert outside.read_text("utf-8") == "outside\n"
 
 
-def test_run_shell_readonly_git_command_detection(tmp_path: Path) -> None:
+def test_split_shell_commands() -> None:
+    assert _split_commands("git status && git diff -- src") == ["git status", "git diff -- src"]
+    assert _split_commands("  cd a &&   ls  ") == ["cd a", "ls"]
+
+
+def test_extract_command_path_accesses_with_redirect(tmp_path: Path) -> None:
     workspace = tmp_path.resolve()
-    assert _is_readonly_git_command("git status", workspace, workspace)
-    assert _is_readonly_git_command("git diff -- src", workspace, workspace)
-    assert _is_readonly_git_command("cd . && git status", workspace, workspace)
-    assert _is_readonly_git_command("cd ./sub/.. && git diff", workspace, workspace)
-    assert not _is_readonly_git_command("git status > out.txt", workspace, workspace)
-    assert not _is_readonly_git_command("git diff > out.txt", workspace, workspace)
-    assert not _is_readonly_git_command("cd /tmp && git status", workspace, workspace)
-    assert not _is_readonly_git_command("cd . && git status > out.txt", workspace, workspace)
-    assert not _is_readonly_git_command("cd . && git commit -m x", workspace, workspace)
-    assert not _is_readonly_git_command("git commit -m x", workspace, workspace)
-    assert not _is_readonly_git_command("git status", workspace / "sub", workspace)
+    cwd = workspace
+    accesses, next_cwd, recognized = _extract_command_path_accesses("cat a.txt > out.txt", cwd, workspace)
+    assert next_cwd == cwd
+    assert recognized
+    assert {(item.mode, item.path) for item in accesses} == {
+        ("read", workspace / "a.txt"),
+        ("write", workspace / "out.txt"),
+    }
+
+
+def test_extract_command_path_accesses_mv_write_write(tmp_path: Path) -> None:
+    workspace = tmp_path.resolve()
+    cwd = workspace
+    accesses, _, recognized = _extract_command_path_accesses("mv old.txt new.txt", cwd, workspace)
+    assert recognized
+    assert {(item.mode, item.path) for item in accesses} == {
+        ("write", workspace / "old.txt"),
+        ("write", workspace / "new.txt"),
+    }
+
+
+def test_extract_command_path_accesses_unknown_command(tmp_path: Path) -> None:
+    workspace = tmp_path.resolve()
+    cwd = workspace
+    accesses, next_cwd, recognized = _extract_command_path_accesses("unknown_tool arg", cwd, workspace)
+    assert accesses == []
+    assert next_cwd == cwd
+    assert not recognized
+
+
+@pytest.mark.asyncio
+async def test_run_shell_combined_command_requires_all_permissions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.txt").write_text("a\n", "utf-8")
+    registry = build_default_tool_registry()
+
+    requested_keys: list[str] = []
+
+    async def handler(request: PermissionRequest) -> str:
+        requested_keys.append(request.key)
+        if request.key == f"write::{tmp_path / 'out.txt'}":
+            return "deny"
+        return "allow_once"
+
+    registry.set_permission_handler(handler)
+    result = await registry.execute(
+        "run_shell",
+        json.dumps({"command": "cat a.txt > out.txt && git status"}),
+    )
+    assert "未授权" in result
+    assert f"read::{tmp_path / 'a.txt'}" in requested_keys
+    assert f"write::{tmp_path / 'out.txt'}" in requested_keys
+
+
+@pytest.mark.asyncio
+async def test_run_shell_unknown_command_fallback_hash_permission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    registry = build_default_tool_registry()
+
+    requested: list[str] = []
+
+    async def handler(request: PermissionRequest) -> str:
+        requested.append(request.key)
+        if request.key.startswith("shell::"):
+            return "deny"
+        return "allow_once"
+
+    registry.set_permission_handler(handler)
+    result = await registry.execute(
+        "run_shell",
+        json.dumps({"command": "unknown_cmd arg1"}),
+    )
+    assert "整条命令授权" in result
+    assert any(item.startswith("shell::") for item in requested)

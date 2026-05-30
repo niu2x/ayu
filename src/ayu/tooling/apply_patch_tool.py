@@ -200,7 +200,12 @@ def _apply_update_hunks(content: str, lines: list[str], path: str) -> str:
     return updated
 
 
-async def _check_path_permission(registry: ToolRegistryLike, path: Path, workspace_root: Path) -> bool:
+async def _check_path_permission(
+    registry: ToolRegistryLike,
+    mode: Literal["read", "write"],
+    path: Path,
+    workspace_root: Path,
+) -> bool:
     from ayu.tools import PermissionRequest
 
     if path.is_relative_to(workspace_root):
@@ -210,9 +215,9 @@ async def _check_path_permission(registry: ToolRegistryLike, path: Path, workspa
         PermissionRequest(
             action=APPLY_PATCH_ACTION,
             target_kind="path",
-            key=f"apply_patch::{path}",
+            key=f"{mode}::{path}",
             target=str(path),
-            reason=f"patch 修改路径不在当前工作目录内（workspace: {workspace_root}）",
+            reason=f"apply_patch 需要 {mode} 路径授权（workspace: {workspace_root}）",
         )
     )
 
@@ -238,18 +243,25 @@ def register_apply_patch_tool(registry: ToolRegistryLike, workspace_root: Path) 
         except ValueError as exc:
             return f"执行失败: patch 结构非法: {exc}"
 
-        planned_paths: set[Path] = set()
+        planned_accesses: set[tuple[str, Path]] = set()
         for operation in operations:
-            planned_paths.add(_resolve_target_path(operation.path, workspace_root))
+            source_path = _resolve_target_path(operation.path, workspace_root)
+            if operation.kind == "add":
+                planned_accesses.add(("write", source_path))
+            elif operation.kind == "delete":
+                planned_accesses.add(("write", source_path))
+            elif operation.kind == "update":
+                planned_accesses.add(("read", source_path))
+                planned_accesses.add(("write", source_path))
             if operation.move_to is not None:
-                planned_paths.add(_resolve_target_path(operation.move_to, workspace_root))
+                planned_accesses.add(("write", _resolve_target_path(operation.move_to, workspace_root)))
 
-        for path in sorted(planned_paths):
-            allowed = await _check_path_permission(registry, path, workspace_root)
+        for mode, path in sorted(planned_accesses, key=lambda item: (str(item[1]), item[0])):
+            allowed = await _check_path_permission(registry, mode, path, workspace_root)
             if not allowed:
                 return (
-                    "执行失败: apply_patch 未获授权访问工作目录外路径。\n"
-                    f"workspace: {workspace_root}\n"
+                    "执行失败: apply_patch 未获授权访问路径。\n"
+                    f"mode: {mode}\n"
                     f"target: {path}"
                 )
 

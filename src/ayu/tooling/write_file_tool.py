@@ -29,22 +29,24 @@ def register_write_file_tool(registry: ToolRegistryLike, workspace_root: Path) -
         from ayu.tools import PermissionRequest
 
         target = resolve_target_path(path, workspace_root)
-        if not target.is_relative_to(workspace_root):
+        if target.is_relative_to(workspace_root):
+            allowed = True
+        else:
             allowed = await registry.request_permission(
                 PermissionRequest(
                     action=WRITE_FILE_ACTION,
                     target_kind="path",
                     key=f"write::{target}",
                     target=str(target),
-                    reason=f"写入路径不在当前工作目录内（workspace: {workspace_root}）",
+                    reason=f"写入文件需要 write 路径授权（workspace: {workspace_root}）",
                 )
             )
-            if not allowed:
-                return (
-                    "写入失败: 未获授权访问工作目录外路径。\n"
-                    f"workspace: {workspace_root}\n"
-                    f"target: {target}"
-                )
+        if not allowed:
+            return (
+                "写入失败: 未获授权访问路径。\n"
+                f"mode: write\n"
+                f"path: {target}"
+            )
         if target.exists() and not overwrite:
             return f"写入失败: 文件已存在 {path}"
         target.parent.mkdir(parents=True, exist_ok=True)

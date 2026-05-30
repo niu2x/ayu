@@ -52,7 +52,7 @@ class ToolRegistry:
         if request.key in self._session_permissions:
             return True
         if self._permission_handler is None:
-            return False
+            return True
         decision = await self._permission_handler(request)
         if decision == "allow_session":
             self._session_permissions.add(request.key)

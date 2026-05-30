@@ -36,22 +36,24 @@ def register_read_file_tool(registry: ToolRegistryLike, workspace_root: Path) ->
             return "读取失败: line_count 不能大于 1000"
 
         target = resolve_target_path(path, workspace_root)
-        if not target.is_relative_to(workspace_root):
+        if target.is_relative_to(workspace_root):
+            allowed = True
+        else:
             allowed = await registry.request_permission(
                 PermissionRequest(
                     action=READ_FILE_ACTION,
                     target_kind="path",
                     key=f"read::{target}",
                     target=str(target),
-                    reason=f"读取路径不在当前工作目录内（workspace: {workspace_root}）",
+                    reason=f"读取文件需要 read 路径授权（workspace: {workspace_root}）",
                 )
             )
-            if not allowed:
-                return (
-                    "读取失败: 未获授权访问工作目录外路径。\n"
-                    f"workspace: {workspace_root}\n"
-                    f"target: {target}"
-                )
+        if not allowed:
+            return (
+                "读取失败: 未获授权访问路径。\n"
+                f"mode: read\n"
+                f"path: {target}"
+            )
         if not target.exists():
             return f"读取失败: 文件不存在 {path}"
         if target.is_dir():

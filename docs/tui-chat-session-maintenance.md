@@ -126,17 +126,20 @@
   - 默认从第 1 行开始读取 200 行，`line_count` 最大 1000。
   - 返回内容统一带行号，便于后续基于行号继续编辑或复查。
   - `read_file` / `write_file` 默认直接执行；访问工作目录外路径时会触发授权回调并等待用户决策。
+  - `read_file` / `write_file` 授权 key 统一为 `read::<abs_path>` / `write::<abs_path>`。
   - `feedback` 用于记录 agent 在执行中遇到的阻塞信息（如缺少工具、受限条件）。
   - `feedback` 支持 `category` 分类：`tool_missing` / `blocked` / `env_issue` / `general`。
   - `feedback` 会把意见追加到当前工作目录固定文件 `agent_feedback.md`。
   - `run_shell` 使用 asyncio + subprocess 执行命令，返回结构化 JSON（exit code/stdout/stderr/超时/耗时）。
   - `run_shell` 平台分支：Windows 走 PowerShell，Ubuntu/macOS 走 bash。
-  - `run_shell` 每次执行都会触发授权回调：以完整命令字符串（包含参数、重定向等）计算 SHA-256 作为授权 key。
+  - `run_shell` 会先拆分组合命令（如 `cmd1 && cmd2`），逐条提取读写路径（含 `<`、`>`、`>>`、`1>`、`2>` 重定向）。
+  - 所有子命令的路径权限都通过后才执行；授权 key 统一为 `read::<abs_path>` / `write::<abs_path>`。
+  - 若存在无法识别的子命令，会回退到整条命令 hash 授权（`shell::<sha256(command)>`）。
   - 特例：当有效目录为当前工作目录且命令是无重定向的 `git status` / `git diff` 时，视为只读命令，免授权执行。
   - 组合命令 `cd <dir> && git status|git diff` 也会识别，并以 `cd` 后目录作为有效目录判断。
   - 授权决策支持 `deny` / `allow_once` / `allow_session`，其中 `allow_session` 在本次会话内缓存。
   - `apply_patch` 支持结构化 patch：`*** Add File`、`*** Update File`、`*** Delete File`、`*** Move to`。
-  - `apply_patch` 修改工作目录外路径时同样会触发授权回调。
+  - `apply_patch` 会对内部每个文件操作分别做路径权限检查，授权 key 同样使用 `read::<abs_path>` / `write::<abs_path>`。
   - `apply_patch` 内置结构校验和 hunk 精确报错（定位到第几个 hunk 与未命中上下文片段）。
   - `apply_patch` 支持 `Update File` 中纯 `+` hunk 按 `@@` 行号位置插入，不再仅依赖上下文替换。
   - `apply_patch` 支持在 `@@ ... @@` 后追加锚点文本；当存在锚点时，会校验 `@@` 行号位置对应文本是否匹配，不匹配会报错。
