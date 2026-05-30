@@ -1,4 +1,5 @@
 from pathlib import Path
+import shlex
 from typing import Protocol
 
 from pydantic import BaseModel
@@ -25,12 +26,35 @@ def _resolve_workdir(workdir: str | None, workspace_root: Path) -> Path:
 
 
 def _is_readonly_git_command(command: str, workdir: Path, workspace_root: Path) -> bool:
-    if workdir != workspace_root:
-        return False
     normalized = command.strip()
     if ">" in normalized:
         return False
-    return normalized.startswith("git status") or normalized.startswith("git diff")
+
+    effective_workdir = workdir
+    git_command = normalized
+
+    if "&&" in normalized:
+        parts = [part.strip() for part in normalized.split("&&") if part.strip()]
+        if len(parts) != 2:
+            return False
+        left, right = parts
+        if not left.startswith("cd "):
+            return False
+        try:
+            cd_tokens = shlex.split(left)
+        except ValueError:
+            return False
+        if len(cd_tokens) != 2 or cd_tokens[0] != "cd":
+            return False
+        cd_target = Path(cd_tokens[1]).expanduser()
+        if not cd_target.is_absolute():
+            cd_target = workdir / cd_target
+        effective_workdir = cd_target.resolve()
+        git_command = right
+
+    if effective_workdir != workspace_root:
+        return False
+    return git_command.startswith("git status") or git_command.startswith("git diff")
 
 
 class ToolRegistryLike(Protocol):
