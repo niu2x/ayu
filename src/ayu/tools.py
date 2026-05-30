@@ -101,4 +101,64 @@ def build_default_tool_registry() -> ToolRegistry:
         target.write_text(content, "utf-8")
         return f"写入成功: {path} ({len(content.encode('utf-8'))} bytes)"
 
+    class ReadFileParameters(BaseModel):
+        path: str
+        start_line: int = 1
+        line_count: int = 200
+
+    @registry.register(
+        name="read_file",
+        description="Read file content by start line and line count.",
+        parameters_model=ReadFileParameters,
+    )
+    async def read_file(
+        path: str,
+        start_line: int = 1,
+        line_count: int = 200,
+    ) -> str:
+        if start_line < 1:
+            return "读取失败: start_line 必须 >= 1"
+        if line_count < 1:
+            return "读取失败: line_count 必须 >= 1"
+        if line_count > 1000:
+            return "读取失败: line_count 不能大于 1000"
+
+        target = Path(path)
+        if not target.exists():
+            return f"读取失败: 文件不存在 {path}"
+        if target.is_dir():
+            return f"读取失败: 目标是目录 {path}"
+
+        content = target.read_text("utf-8")
+        lines = content.splitlines()
+        total_lines = len(lines)
+
+        if total_lines == 0:
+            return f"文件: {path}\n总行数: 0\n内容为空"
+
+        selected_start = start_line
+        selected_end = selected_start + line_count - 1
+
+        if selected_start > total_lines:
+            return (
+                f"文件: {path}\n总行数: {total_lines}\n"
+                f"请求区间: {selected_start}-{selected_end}\n"
+                "结果: 超出文件范围"
+            )
+
+        selected_end = min(selected_end, total_lines)
+        selected_lines = lines[selected_start - 1 : selected_end]
+
+        rendered_content = "\n".join(
+            f"{line_number}: {line_text}"
+            for line_number, line_text in enumerate(selected_lines, start=selected_start)
+        )
+        return (
+            f"文件: {path}\n"
+            f"总行数: {total_lines}\n"
+            f"返回区间: {selected_start}-{selected_end}\n"
+            "内容:\n"
+            f"{rendered_content}"
+        )
+
     return registry
