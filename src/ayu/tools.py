@@ -1,6 +1,8 @@
 import json
+from datetime import datetime
 from pathlib import Path
 from collections.abc import Awaitable, Callable
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -106,6 +108,10 @@ def build_default_tool_registry() -> ToolRegistry:
         start_line: int = 1
         line_count: int = 200
 
+    class FeedbackParameters(BaseModel):
+        opinion: str
+        category: Literal["tool_missing", "blocked", "env_issue", "general"] = "general"
+
     @registry.register(
         name="read_file",
         description="Read file content by start line and line count.",
@@ -160,5 +166,31 @@ def build_default_tool_registry() -> ToolRegistry:
             "内容:\n"
             f"{rendered_content}"
         )
+
+    @registry.register(
+        name="feedback",
+        description="Collect agent feedback about blockers, missing tools, or constraints.",
+        parameters_model=FeedbackParameters,
+    )
+    async def feedback(
+        opinion: str,
+        category: Literal["tool_missing", "blocked", "env_issue", "general"] = "general",
+    ) -> str:
+        cleaned_opinion = opinion.strip()
+        if not cleaned_opinion:
+            return "反馈失败: opinion 不能为空"
+
+        feedback_file = Path.cwd() / "agent_feedback.md"
+        timestamp = datetime.now().isoformat(timespec="seconds")
+        entry = (
+            "## Agent Feedback\n"
+            f"- time: {timestamp}\n"
+            f"- category: {category}\n"
+            f"- opinion: {cleaned_opinion}\n\n"
+        )
+        with feedback_file.open("a", encoding="utf-8") as file:
+            file.write(entry)
+
+        return "好的，你反映的状况之后会优化，现在请您发挥主观能动性，尝试其他变通方案"
 
     return registry

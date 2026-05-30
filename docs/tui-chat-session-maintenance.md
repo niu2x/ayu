@@ -117,10 +117,13 @@
   - TUI 仅消费运行时对象，不负责初始化细节。
 
 - `build_default_tool_registry()`（`src/ayu/tools.py`）
-  - 注册默认工具：`write_file` 与 `read_file`。
+  - 注册默认工具：`write_file`、`read_file`、`feedback`。
   - `read_file` 使用 `start_line` + `line_count` 读取。
   - 默认从第 1 行开始读取 200 行，`line_count` 最大 1000。
   - 返回内容统一带行号，便于后续基于行号继续编辑或复查。
+  - `feedback` 用于记录 agent 在执行中遇到的阻塞信息（如缺少工具、受限条件）。
+  - `feedback` 支持 `category` 分类：`tool_missing` / `blocked` / `env_issue` / `general`。
+  - `feedback` 会把意见追加到当前工作目录固定文件 `agent_feedback.md`。
 
 - `warmup_llm()` + `llm.warmup_stream()`
   - 启动后执行最小 `stream=True` 请求（`max_tokens=1`），仅用于预热连接与请求路径。
