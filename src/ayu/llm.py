@@ -148,12 +148,14 @@ async def _chat_openai_stream(
 
         stream = await client.chat.completions.create(**request_options)
         pending_tool_calls: dict[int, dict[str, str]] = {}
+        reasoning_chunks: list[str] = []
         async for chunk in stream:
             if not chunk.choices:
                 continue
             delta_data = chunk.choices[0].delta.model_dump(exclude_none=True)
             reasoning_text = delta_data.get("reasoning_content") or delta_data.get("reasoning")
             if isinstance(reasoning_text, str) and reasoning_text:
+                reasoning_chunks.append(reasoning_text)
                 yield StreamEvent(type="reasoning", text=reasoning_text)
             content_text = delta_data.get("content")
             if isinstance(content_text, str) and content_text:
@@ -177,28 +179,34 @@ async def _chat_openai_stream(
         if not pending_tool_calls or tool_registry is None:
             break
 
+        assistant_tool_calls: list[dict[str, object]] = []
+        assistant_message: dict[str, object] = {"role": "assistant", "content": ""}
+        if reasoning_chunks:
+            assistant_message["reasoning_content"] = "".join(reasoning_chunks)
+
         for call in pending_tool_calls.values():
             tool_name = call["name"]
             arguments = call["arguments"]
             tool_id = call["id"] or f"call_{tool_name}"
             yield StreamEvent(type="tool_call", text=f"调用工具: {tool_name}")
-            tool_result = await tool_registry.execute(tool_name, arguments)
-            messages.append(
+            assistant_tool_calls.append(
                 {
-                    "role": "assistant",
-                    "content": "",
-                    "tool_calls": [
-                        {
-                            "id": tool_id,
-                            "type": "function",
-                            "function": {
-                                "name": tool_name,
-                                "arguments": arguments,
-                            },
-                        }
-                    ],
+                    "id": tool_id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_name,
+                        "arguments": arguments,
+                    },
                 }
             )
+        assistant_message["tool_calls"] = assistant_tool_calls
+        messages.append(assistant_message)
+
+        for call in pending_tool_calls.values():
+            tool_name = call["name"]
+            arguments = call["arguments"]
+            tool_id = call["id"] or f"call_{tool_name}"
+            tool_result = await tool_registry.execute(tool_name, arguments)
             messages.append(
                 {
                     "role": "tool",

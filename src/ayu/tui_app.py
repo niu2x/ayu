@@ -1,5 +1,6 @@
 import logging
 import sys
+from typing import Literal
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -10,6 +11,7 @@ from textual.widgets import Footer, Input, Markdown, OptionList, Static
 from textual.widgets.option_list import Option
 
 from ayu.llm import chat_stream
+from ayu.tools import PermissionRequest
 
 
 class ChatPanel(VerticalScroll):
@@ -104,6 +106,74 @@ class ModelPickerScreen(ModalScreen[str | None]):
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         self.dismiss(str(event.option.id))
+
+
+class PermissionScreen(ModalScreen[Literal["deny", "allow_once", "allow_session"]]):
+    CSS = """
+    PermissionScreen {
+        align: center middle;
+        background: transparent;
+    }
+    #permission-popup {
+        width: 90;
+        height: auto;
+        border: round $warning;
+        background: $surface;
+        padding: 1;
+    }
+    #permission-title {
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    #permission-target {
+        margin-bottom: 1;
+    }
+    #permission-palette {
+        height: auto;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "deny", "Deny", show=False),
+    ]
+
+    def __init__(self, request: PermissionRequest) -> None:
+        super().__init__()
+        self.request = request
+
+    def compose(self) -> ComposeResult:
+        action_text = f"授权请求: {self.request.action}"
+        detail_text = (
+            f"原因: {self.request.reason}\n"
+            f"目标: {self.request.target}\n"
+            f"key: {self.request.key}"
+        )
+        options = [
+            Option("拒绝", id="deny"),
+            Option("允许一次", id="allow_once"),
+            Option("本会话一直允许", id="allow_session"),
+        ]
+        yield Container(
+            Static(action_text, id="permission-title"),
+            Static(detail_text, id="permission-target"),
+            OptionList(*options, id="permission-palette"),
+            id="permission-popup",
+        )
+
+    def on_mount(self) -> None:
+        palette = self.query_one("#permission-palette", OptionList)
+        palette.highlighted = 0
+        palette.focus()
+
+    def action_deny(self) -> None:
+        self.dismiss("deny")
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        option_id = str(event.option.id)
+        if option_id not in {"deny", "allow_once", "allow_session"}:
+            self.dismiss("deny")
+            return
+        self.dismiss(option_id)
 
 
 class AyuTUIApp(App):
@@ -211,7 +281,20 @@ class AyuTUIApp(App):
         file_handler.setFormatter(logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s"))
         self.logger.handlers = [self.log_handler, stderr_handler, file_handler]
         self.logger.info("日志系统已初始化")
+        self.runtime.tool_registry.set_permission_handler(self.request_permission)
         self.warmup_llm()
+
+    async def request_permission(
+        self,
+        request: PermissionRequest,
+    ) -> Literal["deny", "allow_once", "allow_session"]:
+        self.logger.warning(f"等待用户授权: {request.action} -> {request.target}")
+        decision = await self.push_screen_wait(PermissionScreen(request))
+        if decision in {"deny", "allow_once", "allow_session"}:
+            self.logger.info(f"用户授权结果: {decision} ({request.key})")
+            return decision
+        self.logger.info(f"用户授权结果: deny ({request.key})")
+        return "deny"
 
     def log_to_panel(self, message: str) -> None:
         if hasattr(self, "log_panel"):

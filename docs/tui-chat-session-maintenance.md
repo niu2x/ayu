@@ -117,13 +117,22 @@
   - TUI 仅消费运行时对象，不负责初始化细节。
 
 - `build_default_tool_registry()`（`src/ayu/tools.py`）
-  - 注册默认工具：`write_file`、`read_file`、`feedback`。
+  - 注册默认工具：`write_file`、`read_file`、`feedback`、`run_shell`。
   - `read_file` 使用 `start_line` + `line_count` 读取。
   - 默认从第 1 行开始读取 200 行，`line_count` 最大 1000。
   - 返回内容统一带行号，便于后续基于行号继续编辑或复查。
+  - `read_file` / `write_file` 默认直接执行；访问工作目录外路径时会触发授权回调并等待用户决策。
   - `feedback` 用于记录 agent 在执行中遇到的阻塞信息（如缺少工具、受限条件）。
   - `feedback` 支持 `category` 分类：`tool_missing` / `blocked` / `env_issue` / `general`。
   - `feedback` 会把意见追加到当前工作目录固定文件 `agent_feedback.md`。
+  - `run_shell` 使用 asyncio + subprocess 执行命令，返回结构化 JSON（exit code/stdout/stderr/超时/耗时）。
+  - `run_shell` 平台分支：Windows 走 PowerShell，Ubuntu/macOS 走 bash。
+  - `run_shell` 每次执行都会触发授权回调：以完整命令字符串（包含参数、重定向等）计算 SHA-256 作为授权 key。
+  - 授权决策支持 `deny` / `allow_once` / `allow_session`，其中 `allow_session` 在本次会话内缓存。
+
+- `PermissionScreen`（`src/ayu/tui_app.py`）
+  - 当工具请求权限时弹窗，让用户选择拒绝、允许一次或本会话一直允许。
+  - TUI 在 `on_mount()` 中把 `request_permission` 回调注册到 `tool_registry`。
 
 - `warmup_llm()` + `llm.warmup_stream()`
   - 启动后执行最小 `stream=True` 请求（`max_tokens=1`），仅用于预热连接与请求路径。
