@@ -1,4 +1,5 @@
 import shlex
+import re
 from pathlib import Path
 from typing import Protocol
 
@@ -40,12 +41,26 @@ def _extract_redirects(tokens: list[str], cwd: Path, workspace_root: Path) -> tu
     index = 0
     while index < len(tokens):
         token = tokens[index]
+        if re.match(r"^\d+>&\d+$", token):
+            normalized_tokens.append(token)
+            index += 1
+            continue
         if token in {">", ">>", "1>", "2>", "<"} and index + 1 < len(tokens):
             target = resolve_target_path(tokens[index + 1], workspace_root if tokens[index + 1].startswith("/") else cwd)
             mode = "read" if token == "<" else "write"
             accesses.append(PathAccess(mode=mode, path=target))
             index += 2
             continue
+        attached_redirect_match = re.match(r"^(?:\d+)?(>>|>|<)(.+)$", token)
+        if attached_redirect_match is not None:
+            operator = attached_redirect_match.group(1)
+            operand = attached_redirect_match.group(2)
+            if operand and not operand.startswith("&"):
+                target = resolve_target_path(operand, workspace_root if operand.startswith("/") else cwd)
+                mode = "read" if operator == "<" else "write"
+                accesses.append(PathAccess(mode=mode, path=target))
+                index += 1
+                continue
         normalized_tokens.append(token)
         index += 1
     return accesses, normalized_tokens
@@ -136,6 +151,30 @@ def _extract_command_path_accesses(
                 add("write", arg)
     elif base in {"echo", "printf"}:
         recognized = True
+    elif base == "curl":
+        recognized = True
+        index = 0
+        while index < len(args):
+            arg = args[index]
+            if arg in {"-o", "--output"} and index + 1 < len(args):
+                add("write", args[index + 1])
+                index += 2
+                continue
+            if arg in {"-O", "--remote-name"}:
+                add("write", ".")
+                index += 1
+                continue
+            if arg in {"-T", "--upload-file"} and index + 1 < len(args):
+                add("read", args[index + 1])
+                index += 2
+                continue
+            if arg.startswith("--data") and "@" in arg:
+                _, file_part = arg.split("@", maxsplit=1)
+                if file_part:
+                    add("read", file_part)
+            elif arg.startswith("@") and len(arg) > 1:
+                add("read", arg[1:])
+            index += 1
 
     accesses.extend(redirect_accesses)
     if not recognized and redirect_accesses:

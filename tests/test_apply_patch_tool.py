@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from ayu.tools import PermissionRequest, build_default_tool_registry
-from ayu.tooling.run_shell_tool import _extract_command_path_accesses, _split_commands
+from ayu.tooling.run_shell_tool import _extract_command_path_accesses, _extract_redirects, _split_commands
 
 
 @pytest.mark.asyncio
@@ -340,6 +340,30 @@ def test_extract_command_path_accesses_find(tmp_path: Path) -> None:
     assert {(item.mode, item.path) for item in accesses_default} == {
         ("read", workspace),
     }
+
+
+def test_extract_command_path_accesses_curl(tmp_path: Path) -> None:
+    workspace = tmp_path.resolve()
+    cwd = workspace
+    accesses, next_cwd, recognized = _extract_command_path_accesses(
+        "curl -o out.json -T upload.txt https://example.com",
+        cwd,
+        workspace,
+    )
+    assert recognized
+    assert next_cwd == cwd
+    assert {(item.mode, item.path) for item in accesses} == {
+        ("write", workspace / "out.json"),
+        ("read", workspace / "upload.txt"),
+    }
+
+
+def test_extract_redirects_ignore_fd_dup(tmp_path: Path) -> None:
+    workspace = tmp_path.resolve()
+    cwd = workspace
+    accesses, normalized = _extract_redirects(["git", "status", "2>&1"], cwd, workspace)
+    assert accesses == []
+    assert normalized == ["git", "status", "2>&1"]
 
 
 @pytest.mark.asyncio
