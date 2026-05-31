@@ -18,6 +18,7 @@ class SessionMessage(BaseModel):
     name: str | None = None
     tool_call_id: str | None = None
     tool_calls_json: str | None = None
+    reasoning_content: str | None = None
 
     def to_llm_message(self) -> dict[str, str | list | None]:
         message: dict[str, str | list | None] = {"role": self.role, "content": self.content}
@@ -27,6 +28,8 @@ class SessionMessage(BaseModel):
             message["tool_call_id"] = self.tool_call_id
         if self.tool_calls_json:
             message["tool_calls"] = json.loads(self.tool_calls_json)
+        if self.reasoning_content:
+            message["reasoning_content"] = self.reasoning_content
         return message
 
 
@@ -41,6 +44,7 @@ class Session(BaseModel):
         name: str | None = None,
         tool_call_id: str | None = None,
         tool_calls_json: str | None = None,
+        reasoning_content: str | None = None,
     ) -> SessionMessage:
         event_id = uuid4().hex
         event_ts = datetime.now().astimezone().isoformat(timespec="milliseconds")
@@ -53,6 +57,7 @@ class Session(BaseModel):
             name=name,
             tool_call_id=tool_call_id,
             tool_calls_json=tool_calls_json,
+            reasoning_content=reasoning_content,
         )
         self.messages.append(msg)
         return msg

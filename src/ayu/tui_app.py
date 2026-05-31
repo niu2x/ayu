@@ -461,14 +461,36 @@ class AyuTUIApp(App):
 
     async def _do_switch_session(self, session_id: str) -> None:
         self.logger.info(f"切换会话: {session_id}")
-        await self.runtime.switch_session(session_id)
+        try:
+            await self.runtime.switch_session(session_id)
+        except Exception:
+            self.logger.exception("切换会话失败")
+            self.query_one(ChatPanel).add_message("ayu", f"会话加载失败: {session_id}")
+            return
         chat = self.query_one(ChatPanel)
         chat.clear_messages()
         for msg in self.runtime.session.messages:
+            if msg.role == "system":
+                continue
             if msg.role == "user":
                 chat.add_message("you", msg.content)
             elif msg.role == "assistant":
-                chat.add_message("ayu", msg.content)
+                if msg.reasoning_content:
+                    chat.mount(Static(f"[dim]{msg.reasoning_content}[/]", classes="chat-message"))
+                    chat.scroll_end(animate=False)
+                if msg.tool_calls_json:
+                    import json
+                    try:
+                        calls = json.loads(msg.tool_calls_json)
+                        for call in calls:
+                            name = call.get("function", {}).get("name", "?")
+                            chat.add_message("ayu", f"🔧 正在调用工具: {name}")
+                    except json.JSONDecodeError:
+                        pass
+                if msg.content:
+                    chat.add_message("ayu", msg.content)
+            elif msg.role == "tool":
+                chat.add_message("ayu", f"✅ 工具调用完成: {msg.name or '?'}")
         self.logger.info(f"已切换到会话: {session_id}")
 
     def show_model_popup(self) -> None:
@@ -570,6 +592,7 @@ class AyuTUIApp(App):
 
         reasoning_message: Static | None = None
         reasoning_chunks: list[str] = []
+        reasoning_content: str = ""
         stream_message: Markdown | None = None
         stream_chunks: list[str] = []
         chunks: list[str] = []
@@ -593,7 +616,8 @@ class AyuTUIApp(App):
                         reasoning_message = chat_panel.begin_reasoning_message("ayu")
                         reasoning_chunks = []
                     reasoning_chunks.append(event.text)
-                    chat_panel.update_reasoning_message(reasoning_message, "ayu", "".join(reasoning_chunks))
+                    reasoning_content = "".join(reasoning_chunks)
+                    chat_panel.update_reasoning_message(reasoning_message, "ayu", reasoning_content)
                     continue
                 if event.type == "tool_call":
                     self.logger.info(event.text)
@@ -625,7 +649,7 @@ class AyuTUIApp(App):
                         chat_panel.mount(tool_status_message)
                     tool_status_message.update(f"✅ {event.text}")
                     chat_panel.scroll_end(animate=False)
-                    # 保存 assistant 消息（含 tool_calls）
+                    # 保存 assistant 消息（含 tool_calls + reasoning）
                     if in_tool_round and pending_tool_calls_for_session:
                         import json
                         tool_calls_json = json.dumps([
@@ -643,6 +667,7 @@ class AyuTUIApp(App):
                             role="assistant",
                             content="",
                             tool_calls_json=tool_calls_json,
+                            reasoning_content=reasoning_content,
                         )
                         in_tool_round = False
                         pending_tool_calls_for_session = []
@@ -689,8 +714,9 @@ class AyuTUIApp(App):
                 role="assistant",
                 content="",
                 tool_calls_json=tool_calls_json,
+                reasoning_content=reasoning_content,
             )
-        await self.runtime.add_message("assistant", assistant_content)
+        await self.runtime.add_message("assistant", assistant_content, reasoning_content=reasoning_content)
         self._set_ai_working(False)
         self.logger.info("模型响应完成")
 

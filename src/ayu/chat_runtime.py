@@ -29,8 +29,9 @@ class ChatRuntime:
         name: str | None = None,
         tool_call_id: str | None = None,
         tool_calls_json: str | None = None,
+        reasoning_content: str | None = None,
     ) -> SessionMessage:
-        msg = self.session.add_message(role, content, name, tool_call_id, tool_calls_json)
+        msg = self.session.add_message(role, content, name, tool_call_id, tool_calls_json, reasoning_content)
         stored = StoredMessage(
             id=msg.id,
             session_id=msg.session_id,
@@ -40,6 +41,7 @@ class ChatRuntime:
             name=msg.name,
             tool_call_id=msg.tool_call_id,
             tool_calls_json=msg.tool_calls_json,
+            reasoning_content=msg.reasoning_content,
         )
         await self.backend.append_message(stored)
         return msg
@@ -53,7 +55,7 @@ class ChatRuntime:
         )
         session = Session(id=session_id)
         for sm in stored_messages:
-            session.add_message(sm.role, sm.content, sm.name, sm.tool_call_id, sm.tool_calls_json)
+            session.add_message(sm.role, sm.content, sm.name, sm.tool_call_id, sm.tool_calls_json, sm.reasoning_content)
         self.session = session
         return session
 

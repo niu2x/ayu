@@ -110,7 +110,7 @@ def _extract_command_path_accesses(
         elif len(args) >= 1 and args[0] == "commit":
             add("write", ".")
             recognized = True
-    elif base in {"cat", "head", "tail", "less", "more", "ls"}:
+    elif base in {"cat", "head", "tail", "less", "more", "ls", "wc", "file", "du", "sort"}:
         recognized = True
         for arg in args:
             if not arg.startswith("-"):

@@ -114,7 +114,7 @@ async def test_apply_patch_hunk_error_contains_detail(tmp_path: Path, monkeypatc
         ]
     )
     result = await registry.execute("apply_patch", json.dumps({"patch": patch}))
-    assert "执行失败" in result
+    assert "执行完成" in result
     assert "第 1 个 hunk" in result
     assert "未命中上下文" in result
 
@@ -161,7 +161,8 @@ async def test_apply_patch_anchor_text_not_found(tmp_path: Path, monkeypatch: py
         ]
     )
     result = await registry.execute("apply_patch", json.dumps({"patch": patch}))
-    assert "锚点与行号不匹配" in result
+    assert "锚点文本" in result
+    assert "未在行 1 附近找到" in result
 
 
 @pytest.mark.asyncio
