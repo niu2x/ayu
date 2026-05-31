@@ -9,7 +9,6 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, VerticalScroll
 from textual.screen import ModalScreen
-from textual.markup import escape
 from textual.widgets import Footer, Input, Markdown, OptionList, Static
 from textual.widgets.option_list import Option
 
@@ -50,7 +49,8 @@ class ChatPanel(VerticalScroll):
 
     def update_reasoning_message(self, message: Static, role: str, content: str) -> None:
         message.display = True
-        message.update(f"[dim]{escape(content)}[/]")
+        safe = content.replace("[", r"\[")
+        message.update(f"[dim]{safe}[/]")
         self.scroll_end(animate=False)
 
 
@@ -393,25 +393,24 @@ class AyuTUIApp(App):
     def _set_ai_working(self, working: bool, usage: dict[str, object] | None = None) -> None:
         self._ai_working = working
         status = self.query_one("#ai-status", Static)
+        msg_count = sum(1 for m in self.runtime.session.messages if m.role != "system") if self.runtime else 0
         if working:
-            status.update("⏳ AI 正在工作...")
-        elif usage:
-            parts: list[str] = []
-            total = usage.get("total_tokens")
-            if total is not None:
-                parts.append(f"total={total}")
-            # 计算缓存命中率
-            details = usage.get("prompt_tokens_details")
-            if isinstance(details, dict):
-                cached = details.get("cached_tokens", 0)
-                if isinstance(cached, (int, float)) and cached > 0:
-                    prompt = usage.get("prompt_tokens", 0)
-                    if isinstance(prompt, (int, float)) and prompt > 0:
-                        pct = round(cached / prompt * 100)
-                        parts.append(f"cached={pct}%")
-            status.update(f"✓ 就绪  [dim]({' | '.join(parts)})[/]")
+            status.update(f"⏳ AI 正在工作...  [dim]({msg_count} 条消息)[/]")
         else:
-            status.update("✓ 就绪")
+            parts: list[str] = [f"{msg_count} 条消息"]
+            if usage:
+                total = usage.get("total_tokens")
+                if total is not None:
+                    parts.append(f"total={total}")
+                details = usage.get("prompt_tokens_details")
+                if isinstance(details, dict):
+                    cached = details.get("cached_tokens", 0)
+                    if isinstance(cached, (int, float)) and cached > 0:
+                        prompt = usage.get("prompt_tokens", 0)
+                        if isinstance(prompt, (int, float)) and prompt > 0:
+                            pct = round(cached / prompt * 100)
+                            parts.append(f"cached={pct}%")
+            status.update(f"✓ 就绪  [dim]({' | '.join(parts)})[/]")
 
     async def request_permission(
         self,
