@@ -110,6 +110,9 @@ def _extract_command_path_accesses(
         elif len(args) >= 1 and args[0] == "commit":
             add("write", ".")
             recognized = True
+        elif len(args) >= 1 and args[0] == "push":
+            add("write", ".")
+            recognized = True
     elif base in {"cat", "head", "tail", "less", "more", "ls", "wc", "file", "du", "sort"}:
         recognized = True
         for arg in args:
@@ -151,6 +154,14 @@ def _extract_command_path_accesses(
                 add("write", arg)
     elif base in {"echo", "printf"}:
         recognized = True
+    elif base == "sed":
+        recognized = True
+        has_i = any(arg == "-i" for arg in args)
+        # sed 用法: sed [选项] '脚本' [文件...]
+        # 取最后一个非 flag 参数作为文件，没有则不操作（从 stdin 读）
+        file_args = [arg for arg in args if not arg.startswith("-") and arg != "-e"]
+        if file_args:
+            add("write" if has_i else "read", file_args[-1])
     elif base == "curl":
         recognized = True
         index = 0
