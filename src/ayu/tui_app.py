@@ -286,6 +286,10 @@ class AyuTUIApp(App):
         background: $surface;
         text-align: left;
     }
+    .thinking-indicator {
+        text-style: italic;
+        color: $text-muted;
+    }
     #log-panel {
         border: solid $accent;
         width: 45;
@@ -545,49 +549,73 @@ class AyuTUIApp(App):
     async def call_llm(self, message: str) -> None:
         self.logger.info("开始请求模型")
         chat_panel = self.query_one(ChatPanel)
+        # 显示等待指示器，第一个事件到达时移除
+        thinking: Static | None = Static("🤔 思考中...", classes="chat-message message-ai thinking-indicator")
+        chat_panel.mount(thinking)
+        chat_panel.scroll_end(animate=False)
+
         reasoning_message: Static | None = None
         reasoning_chunks: list[str] = []
         stream_message: Markdown | None = None
         stream_chunks: list[str] = []
         chunks: list[str] = []
+        assistant_content = ""
         pending_line = ""
         tool_status_message: Markdown | None = None
-        async for event in chat_stream(
-            self.runtime.session.to_llm_messages(),
-            tool_registry=self.runtime.tool_registry,
-        ):
-            if event.type == "reasoning":
-                if reasoning_message is None:
-                    reasoning_message = chat_panel.begin_reasoning_message("ayu")
-                    reasoning_chunks = []
-                reasoning_chunks.append(event.text)
-                chat_panel.update_reasoning_message(reasoning_message, "ayu", "".join(reasoning_chunks))
-                continue
-            if event.type == "tool_call":
-                self.logger.info(event.text)
-                if tool_status_message is None:
-                    tool_status_message = Markdown("", classes="chat-message message-ai")
-                    chat_panel.mount(tool_status_message)
-                tool_status_message.update(f"🔧 {event.text}")
-                chat_panel.scroll_end(animate=False)
-                if event.text.startswith("正在调用工具:"):
+        stream_cursor: Static | None = None
+        try:
+            async for event in chat_stream(
+                self.runtime.session.to_llm_messages(),
+                tool_registry=self.runtime.tool_registry,
+            ):
+                # 第一个事件到达时移除等待指示器
+                if thinking is not None:
+                    thinking.remove()
+                    thinking = None
+                if event.type == "reasoning":
+                    if reasoning_message is None:
+                        reasoning_message = chat_panel.begin_reasoning_message("ayu")
+                        reasoning_chunks = []
+                    reasoning_chunks.append(event.text)
+                    chat_panel.update_reasoning_message(reasoning_message, "ayu", "".join(reasoning_chunks))
+                    continue
+                if event.type == "tool_call":
+                    self.logger.info(event.text)
+                    if tool_status_message is None:
+                        tool_status_message = Markdown("", classes="chat-message message-ai")
+                        chat_panel.mount(tool_status_message)
+                    tool_status_message.update(f"🔧 {event.text}")
+                    chat_panel.scroll_end(animate=False)
+                    if event.text.startswith("正在调用工具:"):
+                        reasoning_message = None
+                        stream_message = None
+                        stream_chunks = []
                     reasoning_message = None
-                    stream_message = None
+                    continue
+                if stream_message is None:
+                    stream_message = chat_panel.begin_stream_message("ayu")
                     stream_chunks = []
-                reasoning_message = None
-                continue
-            if stream_message is None:
-                stream_message = chat_panel.begin_stream_message("ayu")
-                stream_chunks = []
-            chunks.append(event.text)
-            stream_chunks.append(event.text)
-            pending_line += event.text
-            if "\n" in pending_line:
+                    stream_cursor = Static("▊", classes="chat-message message-ai stream-cursor")
+                    chat_panel.mount(stream_cursor)
+                chunks.append(event.text)
+                stream_chunks.append(event.text)
+                pending_line += event.text
+                if "\n" in pending_line:
+                    chat_panel.update_stream_message(stream_message, "ayu", "".join(stream_chunks))
+                    pending_line = pending_line.rsplit("\n", maxsplit=1)[-1]
+            assistant_content = "".join(chunks)
+            if stream_message is not None:
                 chat_panel.update_stream_message(stream_message, "ayu", "".join(stream_chunks))
-                pending_line = pending_line.rsplit("\n", maxsplit=1)[-1]
-        assistant_content = "".join(chunks)
-        if stream_message is not None:
-            chat_panel.update_stream_message(stream_message, "ayu", "".join(stream_chunks))
+                if stream_cursor is not None:
+                    stream_cursor.remove()
+                    stream_cursor = None
+        finally:
+            if thinking is not None:
+                thinking.remove()
+                thinking = None
+            if stream_cursor is not None:
+                stream_cursor.remove()
+                stream_cursor = None
         await self.runtime.add_message("assistant", assistant_content)
         self.logger.info("模型响应完成")
 
