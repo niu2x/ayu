@@ -46,16 +46,6 @@ def path() -> None:
     console.print(get_config_path())
 
 
-@config_app.command("path-log")
-def path_log() -> None:
-    """显示日志目录路径"""
-    from pathlib import Path
-
-    from ayu.config import DIRS
-
-    console.print(Path(DIRS.user_log_dir))
-
-
 @config_app.command()
 def set_provider(
     name: str = typer.Argument(help="提供商名称"),
@@ -127,32 +117,15 @@ def remove_model(
     console.print(f"已删除模型 [bold]{provider}/{name}[/]")
 
 
-@state_app.command()
-def show_state() -> None:
+@state_app.command("show")
+def state_show() -> None:
     """查看当前 state.json"""
     from ayu.config import load_state
     console.print(load_state().model_dump_json(indent=2))
 
 
-@state_app.command()
+@state_app.command("path")
 def state_path() -> None:
     """显示 state.json 路径"""
     from ayu.config import get_state_path
     console.print(get_state_path())
-
-
-@state_app.command()
-def set_state(
-    key: str = typer.Argument(help="字段名 (provider/model/theme)"),
-    value: str = typer.Argument(help="值"),
-) -> None:
-    """设置运行态字段"""
-    from ayu.config import load_state, save_state
-    allowed = {"provider", "model", "theme"}
-    if key not in allowed:
-        console.print(f"不允许的字段: {key}，可选: {', '.join(sorted(allowed))}")
-        raise typer.Exit(1)
-    state = load_state()
-    setattr(state, key, value)
-    save_state(state)
-    console.print(f"已设置 state.{key} = {value}")

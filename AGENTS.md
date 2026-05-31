@@ -40,9 +40,8 @@ uv run ayu config set-provider <name> --api-key <key>   # 添加/更新提供商
 uv run ayu config remove-provider <name>                # 删除提供商
 uv run ayu config set-model <provider> <name>           # 添加/更新模型
 uv run ayu config remove-model <provider> <name>        # 删除模型
-uv run ayu state set-state provider <name>              # 切换当前提供商
-uv run ayu state set-state model <name>                 # 切换当前模型
-uv run ayu state set-state theme <name>                 # 切换主题
+uv run ayu state show        # 查看 state.json
+uv run ayu state path        # 显示 state.json 路径
 
 uv sync             # 安装/同步依赖
 uv add <package>    # 添加依赖

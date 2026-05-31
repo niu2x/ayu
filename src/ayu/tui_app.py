@@ -334,20 +334,15 @@ class AyuTUIApp(App):
         yield Footer()
 
     async def on_mount(self) -> None:
-        from datetime import datetime
-
         from ayu.chat_runtime import build_chat_runtime
-        from ayu.storage import StoredSession, create_backend
+        from ayu.storage import create_backend
         from ayu.system_prompt import build_system_prompt
 
         backend = create_backend("sqlite")
         await backend.setup()
         self.runtime = build_chat_runtime(backend)
-        now = datetime.now().astimezone().isoformat(timespec="milliseconds")
-        await backend.create_session(
-            StoredSession(id=self.runtime.session.id, created_at=now, updated_at=now)
-        )
-        await self.runtime.add_message("system", build_system_prompt())
+        self._session_persisted = False
+        self.runtime.session.add_message("system", build_system_prompt())
         self.theme = self.runtime.state.theme
         chat = self.query_one(ChatPanel)
         welcome = "Hello! I'm ayu. How can I help you?"
@@ -373,6 +368,25 @@ class AyuTUIApp(App):
         self.runtime.tool_registry.set_permission_handler(self.request_permission)
         self._ai_working = False
         self.warmup_llm()
+
+    async def _ensure_session_persisted(self) -> None:
+        if self._session_persisted:
+            return
+        self._session_persisted = True
+        from datetime import datetime
+        from ayu.storage import StoredMessage, StoredSession
+        now = datetime.now().astimezone().isoformat(timespec="milliseconds")
+        await self.runtime.backend.create_session(
+            StoredSession(id=self.runtime.session.id, created_at=now, updated_at=now)
+        )
+        for msg in self.runtime.session.messages:
+            if msg.role == "system":
+                stored = StoredMessage(
+                    id=msg.id, session_id=msg.session_id, event_ts=msg.event_ts,
+                    role="system", content=msg.content,
+                )
+                await self.runtime.backend.append_message(stored)
+                break
 
     def _set_ai_working(self, working: bool) -> None:
         self._ai_working = working
@@ -418,6 +432,7 @@ class AyuTUIApp(App):
 
         chat = self.query_one(ChatPanel)
         chat.add_message("you", event.value)
+        await self._ensure_session_persisted()
         await self.runtime.add_message("user", event.value)
         self.call_llm(event.value)
 
@@ -463,6 +478,7 @@ class AyuTUIApp(App):
         self.logger.info(f"切换会话: {session_id}")
         try:
             await self.runtime.switch_session(session_id)
+            self._session_persisted = True
         except Exception:
             self.logger.exception("切换会话失败")
             self.query_one(ChatPanel).add_message("ayu", f"会话加载失败: {session_id}")
