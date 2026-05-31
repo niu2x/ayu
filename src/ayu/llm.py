@@ -28,6 +28,62 @@ class StreamEvent(BaseModel):
     tool_result: str | None = None
 
 
+def format_tool_display(
+    name: str,
+    arguments: str,
+    phase: Literal["start", "done"],
+) -> str:
+    """生成工具调用的展示文本，供 TUI 和事件流共用。
+
+    phase="start" → "正在调用工具: {name}"
+    phase="done"  → "工具调用完成: {name}"
+
+    对常用工具附加关键参数信息：
+    - run_shell   -> `{command}`
+    - read_file   -> {path}
+    - write_file  -> {path}
+    - apply_patch -> {path}
+    """
+    import re
+
+    prefix = "正在调用工具:" if phase == "start" else "工具调用完成:"
+    text = f"{prefix} {name}"
+    if not arguments:
+        return text
+
+    try:
+        parsed = json.loads(arguments) if isinstance(arguments, str) else arguments
+    except json.JSONDecodeError:
+        parsed = {}
+
+    if name == "run_shell":
+        cmd = parsed.get("command", "")
+        if isinstance(cmd, str) and cmd.strip():
+            text = f"{prefix} {name} -> `{cmd}`"
+    elif name == "read_file":
+        path = parsed.get("path", "")
+        if isinstance(path, str) and path.strip():
+            text = f"{prefix} {name} -> {path}"
+    elif name == "write_file":
+        path = parsed.get("path", "")
+        if isinstance(path, str) and path.strip():
+            text = f"{prefix} {name} -> {path}"
+    elif name == "apply_patch":
+        patch_text = parsed.get("patch", "")
+        if isinstance(patch_text, str) and patch_text.strip():
+            # 从 patch 文本中提取第一个文件路径
+            # 优先尝试 legacy 格式: *** X File: <path>
+            m = re.search(r"\*\*\* (?:Add|Update|Delete|Rename) File: (.+)", patch_text)
+            if not m:
+                # 回退标准 diff 格式: --- a/<path>
+                m = re.search(r"^--- a/(.+)$", patch_text, re.MULTILINE)
+            if m:
+                file_path = m.group(1).split(" -> ")[0].rstrip()
+                if file_path:
+                    text = f"{prefix} {name} -> {file_path}"
+    return text
+
+
 def _build_openai_client(provider_config: LLMProviderConfig) -> AsyncOpenAI:
     return AsyncOpenAI(
         api_key=provider_config.api_key,
@@ -192,18 +248,9 @@ async def _chat_openai_stream(
             tool_name = call["name"]
             arguments = call["arguments"]
             tool_id = call["id"] or f"call_{tool_name}"
-            tool_call_text = f"正在调用工具: {tool_name}"
-            if tool_name == "run_shell":
-                try:
-                    parsed_arguments = json.loads(arguments) if arguments else {}
-                except json.JSONDecodeError:
-                    parsed_arguments = {}
-                command_text = parsed_arguments.get("command")
-                if isinstance(command_text, str) and command_text.strip():
-                    tool_call_text = f"正在调用工具: {tool_name} -> `{command_text}`"
             yield StreamEvent(
                 type="tool_call",
-                text=tool_call_text,
+                text=format_tool_display(tool_name, arguments, "start"),
                 tool_call_id=tool_id,
                 tool_name=tool_name,
                 tool_arguments=arguments,
@@ -226,18 +273,9 @@ async def _chat_openai_stream(
             arguments = call["arguments"]
             tool_id = call["id"] or f"call_{tool_name}"
             tool_result = await tool_registry.execute(tool_name, arguments)
-            tool_done_text = f"工具调用完成: {tool_name}"
-            if tool_name == "run_shell":
-                try:
-                    parsed_arguments = json.loads(arguments) if arguments else {}
-                except json.JSONDecodeError:
-                    parsed_arguments = {}
-                command_text = parsed_arguments.get("command")
-                if isinstance(command_text, str) and command_text.strip():
-                    tool_done_text = f"工具调用完成: {tool_name} -> `{command_text}`"
             yield StreamEvent(
                 type="tool_result",
-                text=tool_done_text,
+                text=format_tool_display(tool_name, arguments, "done"),
                 tool_call_id=tool_id,
                 tool_name=tool_name,
                 tool_result=tool_result,

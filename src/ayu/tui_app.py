@@ -9,10 +9,11 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, VerticalScroll
 from textual.screen import ModalScreen
+from textual.markup import escape
 from textual.widgets import Footer, Input, Markdown, OptionList, Static
 from textual.widgets.option_list import Option
 
-from ayu.llm import chat_stream
+from ayu.llm import chat_stream, format_tool_display
 from ayu.config import DIRS
 from ayu.storage import StoredSession
 from ayu.tools import PermissionRequest
@@ -49,7 +50,7 @@ class ChatPanel(VerticalScroll):
 
     def update_reasoning_message(self, message: Static, role: str, content: str) -> None:
         message.display = True
-        message.update(f"[dim]{content}[/]")
+        message.update(f"[dim]{escape(content)}[/]")
         self.scroll_end(animate=False)
 
 
@@ -485,6 +486,23 @@ class AyuTUIApp(App):
             return
         chat = self.query_one(ChatPanel)
         chat.clear_messages()
+        # 预扫描 tool_calls_json，建立 tool_call_id → arguments 的查找表
+        _tool_call_args: dict[str, str] = {}
+        import json
+        for msg in self.runtime.session.messages:
+            if msg.role == "system":
+                continue
+            if msg.role == "assistant" and msg.tool_calls_json:
+                try:
+                    calls = json.loads(msg.tool_calls_json)
+                    for call in calls:
+                        cid = call.get("id", "")
+                        func = call.get("function", {})
+                        if cid and func.get("arguments"):
+                            _tool_call_args[cid] = func["arguments"]
+                except json.JSONDecodeError:
+                    pass
+
         for msg in self.runtime.session.messages:
             if msg.role == "system":
                 continue
@@ -494,19 +512,13 @@ class AyuTUIApp(App):
                 if msg.reasoning_content:
                     chat.mount(Static(f"[dim]{msg.reasoning_content}[/]", classes="chat-message"))
                     chat.scroll_end(animate=False)
-                if msg.tool_calls_json:
-                    import json
-                    try:
-                        calls = json.loads(msg.tool_calls_json)
-                        for call in calls:
-                            name = call.get("function", {}).get("name", "?")
-                            chat.add_message("ayu", f"🔧 正在调用工具: {name}")
-                    except json.JSONDecodeError:
-                        pass
                 if msg.content:
                     chat.add_message("ayu", msg.content)
             elif msg.role == "tool":
-                chat.add_message("ayu", f"✅ 工具调用完成: {msg.name or '?'}")
+                tool_name = msg.name or "?"
+                tool_args = _tool_call_args.get(msg.tool_call_id or "", "")
+                display_text = format_tool_display(tool_name, tool_args, "done")
+                chat.add_message("ayu", f"✅ {display_text}")
         self.logger.info(f"已切换到会话: {session_id}")
 
     def show_model_popup(self) -> None:
@@ -614,7 +626,8 @@ class AyuTUIApp(App):
         chunks: list[str] = []
         assistant_content = ""
         pending_line = ""
-        tool_status_message: Markdown | None = None
+        # tool_call_id -> (Markdown widget, tool_name)，每个工具调用独立显示
+        _tool_widgets: dict[str, tuple[Markdown, str]] = {}
         # 收集当前轮次的 tool call，用于构造 assistant 消息
         pending_tool_calls_for_session: list[dict[str, str]] = []
         in_tool_round = False
@@ -637,33 +650,38 @@ class AyuTUIApp(App):
                     continue
                 if event.type == "tool_call":
                     self.logger.info(event.text)
-                    if tool_status_message is None:
-                        tool_status_message = Markdown("", classes="chat-message message-ai")
-                        chat_panel.mount(tool_status_message)
-                    tool_status_message.update(f"🔧 {event.text}")
+                    # 每个工具调用创建独立 widget
+                    widget = Markdown("", classes="chat-message message-ai")
+                    chat_panel.mount(widget)
+                    widget.update(f"🔧 {event.text}")
+                    _tool_widgets[event.tool_call_id or event.tool_name or ""] = (widget, event.tool_name or "")
                     chat_panel.scroll_end(animate=False)
-                    if event.text.startswith("正在调用工具:"):
-                        reasoning_message = None
-                        stream_message = None
-                        stream_chunks = []
-                        # 收集工具调用信息，用于后续保存到 session
-                        if event.tool_call_id:
-                            if not in_tool_round:
-                                in_tool_round = True
-                                pending_tool_calls_for_session = []
-                            pending_tool_calls_for_session.append({
-                                "id": event.tool_call_id,
-                                "name": event.tool_name or "",
-                                "arguments": event.tool_arguments or "",
-                            })
+                    # 新轮次的工具调用：重置流消息，准备收集 tool calls
                     reasoning_message = None
+                    stream_message = None
+                    stream_chunks = []
+                    if event.tool_call_id:
+                        if not in_tool_round:
+                            in_tool_round = True
+                            pending_tool_calls_for_session = []
+                        pending_tool_calls_for_session.append(
+                            {"id": event.tool_call_id,
+                             "name": event.tool_name or "",
+                             "arguments": event.tool_arguments or ""}
+                        )
                     continue
                 if event.type == "tool_result":
                     self.logger.info(event.text)
-                    if tool_status_message is None:
-                        tool_status_message = Markdown("", classes="chat-message message-ai")
-                        chat_panel.mount(tool_status_message)
-                    tool_status_message.update(f"✅ {event.text}")
+                    # 更新对应工具调用的 widget 为完成状态
+                    _key = event.tool_call_id or event.tool_name or ""
+                    if _key in _tool_widgets:
+                        widget, _ = _tool_widgets[_key]
+                        widget.update(f"✅ {event.text}")
+                    else:
+                        # 容错：找不到对应 widget 时创建新消息
+                        widget = Markdown("", classes="chat-message message-ai")
+                        chat_panel.mount(widget)
+                        widget.update(f"✅ {event.text}")
                     chat_panel.scroll_end(animate=False)
                     # 保存 assistant 消息（含 tool_calls + reasoning）
                     if in_tool_round and pending_tool_calls_for_session:
