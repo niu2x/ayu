@@ -396,15 +396,20 @@ class AyuTUIApp(App):
         if working:
             status.update("⏳ AI 正在工作...")
         elif usage:
-            flat: list[str] = []
-            for k, v in usage.items():
-                if isinstance(v, dict):
-                    for sk, sv in v.items():
-                        if isinstance(sv, (int, float, str)):
-                            flat.append(f"{sk}={sv}")
-                elif isinstance(v, (int, float, str)):
-                    flat.append(f"{k}={v}")
-            status.update(f"✓ 就绪  [dim]({', '.join(flat)})[/]")
+            parts: list[str] = []
+            total = usage.get("total_tokens")
+            if total is not None:
+                parts.append(f"total={total}")
+            # 计算缓存命中率
+            details = usage.get("prompt_tokens_details")
+            if isinstance(details, dict):
+                cached = details.get("cached_tokens", 0)
+                if isinstance(cached, (int, float)) and cached > 0:
+                    prompt = usage.get("prompt_tokens", 0)
+                    if isinstance(prompt, (int, float)) and prompt > 0:
+                        pct = round(cached / prompt * 100)
+                        parts.append(f"cached={pct}%")
+            status.update(f"✓ 就绪  [dim]({' | '.join(parts)})[/]")
         else:
             status.update("✓ 就绪")
 
