@@ -297,7 +297,13 @@ class AyuTUIApp(App):
         display: none;
     }
     Input {
+        margin: 0 1 0 1;
+    }
+    #ai-status {
         margin: 0 1 1 1;
+        height: 1;
+        text-style: italic;
+        color: $text-muted;
     }
     #command-popup {
         margin: 0 1;
@@ -324,6 +330,7 @@ class AyuTUIApp(App):
         )
         yield Container(OptionList(id="command-palette"), id="command-popup")
         yield Input(placeholder="Type a message and press Enter...", id="chat-input")
+        yield Static("✓ 就绪", id="ai-status")
         yield Footer()
 
     async def on_mount(self) -> None:
@@ -364,7 +371,13 @@ class AyuTUIApp(App):
         self.logger.handlers = [self.log_handler, stderr_handler, file_handler]
         self.logger.info("日志系统已初始化")
         self.runtime.tool_registry.set_permission_handler(self.request_permission)
+        self._ai_working = False
         self.warmup_llm()
+
+    def _set_ai_working(self, working: bool) -> None:
+        self._ai_working = working
+        status = self.query_one("#ai-status", Static)
+        status.update("⏳ AI 正在工作..." if working else "✓ 就绪")
 
     async def request_permission(
         self,
@@ -548,6 +561,7 @@ class AyuTUIApp(App):
     @work(exclusive=False)
     async def call_llm(self, message: str) -> None:
         self.logger.info("开始请求模型")
+        self._set_ai_working(True)
         chat_panel = self.query_one(ChatPanel)
         # 显示等待指示器，第一个事件到达时移除
         thinking: Static | None = Static("🤔 思考中...", classes="chat-message message-ai thinking-indicator")
@@ -562,7 +576,6 @@ class AyuTUIApp(App):
         assistant_content = ""
         pending_line = ""
         tool_status_message: Markdown | None = None
-        stream_cursor: Static | None = None
         try:
             async for event in chat_stream(
                 self.runtime.session.to_llm_messages(),
@@ -595,8 +608,6 @@ class AyuTUIApp(App):
                 if stream_message is None:
                     stream_message = chat_panel.begin_stream_message("ayu")
                     stream_chunks = []
-                    stream_cursor = Static("▊", classes="chat-message message-ai stream-cursor")
-                    chat_panel.mount(stream_cursor)
                 chunks.append(event.text)
                 stream_chunks.append(event.text)
                 pending_line += event.text
@@ -606,17 +617,12 @@ class AyuTUIApp(App):
             assistant_content = "".join(chunks)
             if stream_message is not None:
                 chat_panel.update_stream_message(stream_message, "ayu", "".join(stream_chunks))
-                if stream_cursor is not None:
-                    stream_cursor.remove()
-                    stream_cursor = None
         finally:
             if thinking is not None:
                 thinking.remove()
                 thinking = None
-            if stream_cursor is not None:
-                stream_cursor.remove()
-                stream_cursor = None
         await self.runtime.add_message("assistant", assistant_content)
+        self._set_ai_working(False)
         self.logger.info("模型响应完成")
 
     @work(exclusive=True)
