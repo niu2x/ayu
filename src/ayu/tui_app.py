@@ -243,6 +243,7 @@ class SessionPickerScreen(ModalScreen[str | None]):
 
 class AyuTUIApp(App):
     TITLE = "ayu"
+    ALLOW_SELECT = False
     ENABLE_COMMAND_PALETTE = False
     COMMAND_PALETTE_DISPLAY = ""
     COMMAND_SUFFIX = " "
@@ -389,10 +390,23 @@ class AyuTUIApp(App):
                 await self.runtime.backend.append_message(stored)
                 break
 
-    def _set_ai_working(self, working: bool) -> None:
+    def _set_ai_working(self, working: bool, usage: dict[str, object] | None = None) -> None:
         self._ai_working = working
         status = self.query_one("#ai-status", Static)
-        status.update("⏳ AI 正在工作..." if working else "✓ 就绪")
+        if working:
+            status.update("⏳ AI 正在工作...")
+        elif usage:
+            flat: list[str] = []
+            for k, v in usage.items():
+                if isinstance(v, dict):
+                    for sk, sv in v.items():
+                        if isinstance(sv, (int, float, str)):
+                            flat.append(f"{sk}={sv}")
+                elif isinstance(v, (int, float, str)):
+                    flat.append(f"{k}={v}")
+            status.update(f"✓ 就绪  [dim]({', '.join(flat)})[/]")
+        else:
+            status.update("✓ 就绪")
 
     async def request_permission(
         self,
@@ -631,6 +645,8 @@ class AyuTUIApp(App):
         # 收集当前轮次的 tool call，用于构造 assistant 消息
         pending_tool_calls_for_session: list[dict[str, str]] = []
         in_tool_round = False
+        # token 用量
+        _last_usage: dict[str, object] | None = None
         try:
             async for event in chat_stream(
                 self.runtime.session.to_llm_messages(),
@@ -714,6 +730,10 @@ class AyuTUIApp(App):
                     )
                     reasoning_message = None
                     continue
+                if event.type == "usage":
+                    self.logger.info("token 用量: %s", event.usage)
+                    _last_usage = event.usage
+                    continue
                 if stream_message is None:
                     stream_message = chat_panel.begin_stream_message("ayu")
                     stream_chunks = []
@@ -750,8 +770,11 @@ class AyuTUIApp(App):
                 tool_calls_json=tool_calls_json,
                 reasoning_content=reasoning_content,
             )
-        await self.runtime.add_message("assistant", assistant_content, reasoning_content=reasoning_content)
-        self._set_ai_working(False)
+        await self.runtime.add_message(
+            "assistant", assistant_content, reasoning_content=reasoning_content,
+            metadata={"usage": _last_usage} if _last_usage else None,
+        )
+        self._set_ai_working(False, usage=_last_usage)
         self.logger.info("模型响应完成")
 
     @work(exclusive=True)

@@ -18,7 +18,7 @@ _runtime_client: AsyncOpenAI | None = None
 
 
 class StreamEvent(BaseModel):
-    type: Literal["reasoning", "content", "tool_call", "tool_result"]
+    type: Literal["reasoning", "content", "tool_call", "tool_result", "usage"]
     text: str
     # tool_call 事件
     tool_call_id: str | None = None
@@ -26,6 +26,8 @@ class StreamEvent(BaseModel):
     tool_arguments: str | None = None
     # tool_result 事件
     tool_result: str | None = None
+    # token 用量
+    usage: dict[str, object] | None = None
 
 
 def format_tool_display(
@@ -168,7 +170,7 @@ async def chat_stream(
         )
         return
 
-    logger.debug("API 风格: %s, 提供商: %s", provider_config.api_style, _runtime_state.provider)
+    logger.info("API 风格: %s, 提供商: %s", provider_config.api_style, _runtime_state.provider)
     if provider_config.api_style == "openai":
         async for event in _chat_openai_stream(
             provider_config,
@@ -188,16 +190,17 @@ async def _chat_openai_stream(
     messages: list[dict],
     tool_registry: ToolRegistry | None = None,
 ) -> AsyncIterator[StreamEvent]:
-    logger.debug("开始流式请求: provider=%s, model=%s, messages=%d",
+    logger.info("开始流式请求: provider=%s, model=%s, messages=%d",
                  provider_config.api_style, model, len(messages))
     client = _runtime_client or _build_openai_client(provider_config)
     model_config = provider_config.models.get(model)
     while True:
-        logger.debug("发送请求: model=%s, messages=%d", model, len(messages))
+        logger.info("发送请求: model=%s, messages=%d", model, len(messages))
         request_options: dict[str, object] = {
             "model": model,
             "messages": messages,
             "stream": True,
+            "stream_options": {"include_usage": True},
             "max_tokens": model_config.max_tokens if model_config else None,
             "temperature": model_config.temperature if model_config else None,
         }
@@ -209,7 +212,11 @@ async def _chat_openai_stream(
         stream = await client.chat.completions.create(**request_options)
         pending_tool_calls: dict[int, dict[str, str]] = {}
         reasoning_chunks: list[str] = []
+        _usage: dict[str, object] | None = None
         async for chunk in stream:
+            if chunk.usage:
+                _usage = chunk.usage.model_dump()
+                logger.info("收到 usage: %s", _usage)
             if not chunk.choices:
                 continue
             delta_data = chunk.choices[0].delta.model_dump(exclude_none=True)
@@ -237,6 +244,9 @@ async def _chat_openai_stream(
                         entry["arguments"] += function_data["arguments"]
 
         if not pending_tool_calls or tool_registry is None:
+            if _usage:
+                yield StreamEvent(type="usage", text="", usage=_usage)
+                _usage = None
             break
 
         assistant_tool_calls: list[dict[str, object]] = []
@@ -287,6 +297,9 @@ async def _chat_openai_stream(
                     "content": tool_result,
                 }
             )
+
+    if _usage:
+        yield StreamEvent(type="usage", text="", usage=_usage)
 
 
 async def warmup_stream() -> bool:

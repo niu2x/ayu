@@ -30,6 +30,7 @@ class ChatRuntime:
         tool_call_id: str | None = None,
         tool_calls_json: str | None = None,
         reasoning_content: str | None = None,
+        metadata: dict[str, object] | None = None,
     ) -> SessionMessage:
         msg = self.session.add_message(role, content, name, tool_call_id, tool_calls_json, reasoning_content)
         stored = StoredMessage(
@@ -42,6 +43,7 @@ class ChatRuntime:
             tool_call_id=msg.tool_call_id,
             tool_calls_json=msg.tool_calls_json,
             reasoning_content=msg.reasoning_content,
+            metadata=metadata or {},
         )
         await self.backend.append_message(stored)
         return msg
