@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 import sys
 from typing import Literal
@@ -13,6 +14,7 @@ from textual.widgets.option_list import Option
 
 from ayu.llm import chat_stream
 from ayu.config import DIRS
+from ayu.storage import StoredSession
 from ayu.tools import PermissionRequest
 
 
@@ -22,6 +24,10 @@ class ChatPanel(VerticalScroll):
             self.mount(Static(content, classes="chat-message message-user"))
         else:
             self.mount(Markdown(content, classes="chat-message message-ai"))
+        self.scroll_end(animate=False)
+
+    def clear_messages(self) -> None:
+        self.remove_children()
         self.scroll_end(animate=False)
 
     def begin_stream_message(self, role: str) -> Markdown:
@@ -179,6 +185,61 @@ class PermissionScreen(ModalScreen[Literal["deny", "allow_once", "allow_session"
         self.dismiss(option_id)
 
 
+class SessionPickerScreen(ModalScreen[str | None]):
+    CSS = """
+    SessionPickerScreen {
+        align: center middle;
+        background: transparent;
+    }
+    #session-popup {
+        width: 70;
+        height: auto;
+        max-height: 20;
+        border: round $primary;
+        background: $surface;
+    }
+    #session-title {
+        padding: 0 1;
+    }
+    #session-palette {
+        height: auto;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=False),
+    ]
+
+    def __init__(self, sessions: Sequence[StoredSession]) -> None:
+        super().__init__()
+        options: list[Option] = [
+            Option(
+                session.title or session.id,
+                id=session.id,
+            )
+            for session in sessions
+        ]
+        self.options = options
+
+    def compose(self) -> ComposeResult:
+        yield Container(
+            Static("选择会话 (Esc 取消)", id="session-title"),
+            OptionList(*self.options, id="session-palette"),
+            id="session-popup",
+        )
+
+    def on_mount(self) -> None:
+        palette = self.query_one("#session-palette", OptionList)
+        palette.highlighted = 0
+        palette.focus()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(str(event.option.id))
+
+
 class AyuTUIApp(App):
     TITLE = "ayu"
     ENABLE_COMMAND_PALETTE = False
@@ -193,6 +254,7 @@ class AyuTUIApp(App):
         "/help": "显示可用命令",
         "/log": "切换日志侧栏",
         "/models": "选择当前模型",
+        "/sessions": "切换会话",
         "/quit": "退出 ayu",
     }
     CSS = """
@@ -260,10 +322,21 @@ class AyuTUIApp(App):
         yield Input(placeholder="Type a message and press Enter...", id="chat-input")
         yield Footer()
 
-    def on_mount(self) -> None:
-        from ayu.chat_runtime import build_chat_runtime
+    async def on_mount(self) -> None:
+        from datetime import datetime
 
-        self.runtime = build_chat_runtime()
+        from ayu.chat_runtime import build_chat_runtime
+        from ayu.storage import StoredSession, create_backend
+        from ayu.system_prompt import build_system_prompt
+
+        backend = create_backend("sqlite")
+        await backend.setup()
+        self.runtime = build_chat_runtime(backend)
+        now = datetime.now().astimezone().isoformat(timespec="milliseconds")
+        await backend.create_session(
+            StoredSession(id=self.runtime.session.id, created_at=now, updated_at=now)
+        )
+        await self.runtime.add_message("system", build_system_prompt())
         self.theme = self.runtime.state.theme
         chat = self.query_one(ChatPanel)
         welcome = "Hello! I'm ayu. How can I help you?"
@@ -318,18 +391,17 @@ class AyuTUIApp(App):
     def should_show_command_popup(self, value: str) -> bool:
         return value.startswith("/") and value.strip() == value
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
         message = event.value.strip()
+        self.query_one("#chat-input", Input).clear()
         if message.startswith("/"):
-            self.handle_command(message)
-            self.query_one("#chat-input", Input).clear()
             self.hide_command_popup()
+            await self.handle_command(message)
             return
 
         chat = self.query_one(ChatPanel)
         chat.add_message("you", event.value)
-        self.runtime.session.add_message("user", event.value)
-        self.query_one("#chat-input", Input).clear()
+        await self.runtime.add_message("user", event.value)
         self.call_llm(event.value)
 
     def show_command_popup(self, prefix: str) -> None:
@@ -348,6 +420,39 @@ class AyuTUIApp(App):
 
     def hide_command_popup(self) -> None:
         self.command_popup.display = False
+
+    async def show_session_popup(self) -> None:
+        sessions = await self.runtime.list_sessions()
+        if not sessions:
+            chat = self.query_one(ChatPanel)
+            chat.add_message("ayu", "没有其他会话")
+            return
+        self.push_screen(SessionPickerScreen(sessions), self.on_session_selected)
+
+    def on_session_selected(self, session_id: str | None) -> None:
+        self.query_one("#chat-input", Input).focus()
+        if session_id is None:
+            return
+        if session_id == self.runtime.session.id:
+            return
+        self._switch_to_session(session_id)
+
+    def _switch_to_session(self, session_id: str) -> None:
+        import asyncio
+
+        asyncio.ensure_future(self._do_switch_session(session_id))
+
+    async def _do_switch_session(self, session_id: str) -> None:
+        self.logger.info(f"切换会话: {session_id}")
+        await self.runtime.switch_session(session_id)
+        chat = self.query_one(ChatPanel)
+        chat.clear_messages()
+        for msg in self.runtime.session.messages:
+            if msg.role == "user":
+                chat.add_message("you", msg.content)
+            elif msg.role == "assistant":
+                chat.add_message("ayu", msg.content)
+        self.logger.info(f"已切换到会话: {session_id}")
 
     def show_model_popup(self) -> None:
         options = [Option("dummy/dummy", id="dummy::dummy")]
@@ -408,7 +513,8 @@ class AyuTUIApp(App):
         palette.action_select()
 
     def get_active_option_list(self) -> OptionList | None:
-        if self.command_popup.display:
+        popup = getattr(self, "command_popup", None)
+        if popup is not None and popup.display:
             return self.command_palette
         return None
 
@@ -417,7 +523,7 @@ class AyuTUIApp(App):
             return self.get_active_option_list() is not None
         return super().check_action(action, parameters)
 
-    def handle_command(self, raw_command: str) -> None:
+    async def handle_command(self, raw_command: str) -> None:
         command = raw_command.split()[0]
         chat = self.query_one(ChatPanel)
         match command:
@@ -426,6 +532,8 @@ class AyuTUIApp(App):
                 chat.add_message("ayu", f"可用命令: {supported}")
             case "/models":
                 self.show_model_popup()
+            case "/sessions":
+                await self.show_session_popup()
             case "/log":
                 self.toggle_log_panel()
             case "/quit":
@@ -480,10 +588,14 @@ class AyuTUIApp(App):
         assistant_content = "".join(chunks)
         if stream_message is not None:
             chat_panel.update_stream_message(stream_message, "ayu", "".join(stream_chunks))
-        self.runtime.session.add_message("assistant", assistant_content)
+        await self.runtime.add_message("assistant", assistant_content)
         self.logger.info("模型响应完成")
 
     @work(exclusive=True)
+    async def on_unmount(self) -> None:
+        if hasattr(self, "runtime"):
+            await self.runtime.backend.close()
+
     async def warmup_llm(self) -> None:
         from ayu.llm import warmup_stream
 

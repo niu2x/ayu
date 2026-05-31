@@ -31,6 +31,8 @@
 新增模块：`src/ayu/session.py`
 
 - `SessionMessage`：统一消息结构，支持 `system/user/assistant/tool`。
+  - 业务层在 `add_message` 时自动生成 `id`（UUID）与 `event_ts`（事件时间戳）。
+  - 每条消息包含 `session_id`，由 `Session.id` 自动注入，便于持久化层按会话关联。
 - `Session`：维护消息列表，并提供 `to_llm_messages()` 转换。
 
 新增模块：`src/ayu/chat_runtime.py`
@@ -167,6 +169,13 @@
 
 - `permission_actions.py`（`src/ayu/tooling/permission_actions.py`）
   - 统一定义权限动作常量（`read_file/write_file/run_shell`），避免字符串散落在各工具模块。
+
+新增模块：`src/ayu/storage/`
+
+- `models.py`：持久化领域模型（`StoredSession`、`StoredMessage`、`MessageQuery`、`StorageCapabilities`）。
+- `interfaces.py`：可替换存储后端协议（`SessionStore`、`MessageStore`、`SearchStore`、`PersistenceBackend`）。
+- `memory_backend.py`：内存实现（用于本地开发与接口联调）。
+- `factory.py`：后端工厂入口，当前支持 `memory`。
 
 - `warmup_llm()` + `llm.warmup_stream()`
   - 启动后执行最小 `stream=True` 请求（`max_tokens=1`），仅用于预热连接与请求路径。
