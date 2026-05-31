@@ -113,14 +113,21 @@
   - 工具调用开始会切分当前流式内容块；调用结束后的新内容会起一条新的 AI 消息，避免跨轮混杂。
 
 - `llm.chat_stream(...)`
-  - 返回结构化事件：`{"type": "reasoning"|"content", "text": ...}`。
+  - 返回结构化事件：`{"type": "reasoning"|"content"|"tool_call"|"tool_result", "text": ...}`。
+  - `tool_call` 事件额外携带 `tool_call_id`、`tool_name`、`tool_arguments` 字段。
+  - `tool_result` 事件额外携带 `tool_call_id`、`tool_name`、`tool_result` 字段。
   - OpenAI 流中同时读取 `delta.content` 与 `delta.reasoning_content`（兼容 `reasoning` 字段）。
 
 - `Session`
   - 运行时初始化时写入一条 `system` 消息（由 `src/ayu/system_prompt.py` 的 pipeline 生成）。
   - 用户发送时写入 `user` 消息。
-  - 流式结束后写入 `assistant` 消息。
+  - 流式结束后写入 `assistant` 消息（纯文本内容）。
+  - 流式过程中遇到 `tool_result` 事件时，先写入一条 `assistant` 消息（含 `tool_calls_json`，content 为空），再写入 `tool` 消息。
+  - `tool_calls_json` 是 OpenAI API 格式的 `tool_calls` 数组 JSON，包含 `id`、`type`、`function.name` 和 `function.arguments`。
+  - 这样多轮工具调用的完整上下文（assistant 的 tool_calls → tool 结果 → 下一轮 assistant 文本）都被持久化到 session。
+  - `SessionMessage` 新增 `tool_calls_json` 字段，`to_llm_message()` 自动将其解析为 `tool_calls` 数组。
   - LLM 调用改为传入 `session.to_llm_messages()`，确保多轮上下文连续。
+  - 注意：同一轮中多个 tool call 共用一个 assistant 消息（content=""），工具结果各自独立为 `tool` 消息。
 
 - `build_chat_runtime()`
   - 在 UI 层之外完成初始化：读取 config/state、创建 session、写入 system prompt、初始化 LLM runtime。

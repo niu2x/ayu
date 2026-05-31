@@ -43,6 +43,7 @@ class SqliteBackend(PersistenceBackend):
                 content TEXT NOT NULL DEFAULT '',
                 name TEXT,
                 tool_call_id TEXT,
+                tool_calls_json TEXT,
                 metadata TEXT NOT NULL DEFAULT '{}'
             );
 
@@ -87,6 +88,7 @@ class SqliteBackend(PersistenceBackend):
             message.content,
             message.name,
             message.tool_call_id,
+            message.tool_calls_json,
             json.dumps(message.metadata, ensure_ascii=False),
         )
 
@@ -99,6 +101,7 @@ class SqliteBackend(PersistenceBackend):
             content=row["content"],
             name=row["name"],
             tool_call_id=row["tool_call_id"],
+            tool_calls_json=row["tool_calls_json"],
             metadata=json.loads(row["metadata"]),
         )
 
@@ -147,8 +150,8 @@ class SqliteBackend(PersistenceBackend):
         conn = self._require_conn()
         await conn.execute(
             "INSERT INTO messages "
-            "(id, session_id, event_ts, role, content, name, tool_call_id, metadata) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "(id, session_id, event_ts, role, content, name, tool_call_id, tool_calls_json, metadata) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             self._message_to_row(message),
         )
         await conn.commit()
@@ -157,8 +160,8 @@ class SqliteBackend(PersistenceBackend):
         conn = self._require_conn()
         await conn.executemany(
             "INSERT INTO messages "
-            "(id, session_id, event_ts, role, content, name, tool_call_id, metadata) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "(id, session_id, event_ts, role, content, name, tool_call_id, tool_calls_json, metadata) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [self._message_to_row(msg) for msg in messages],
         )
         await conn.commit()

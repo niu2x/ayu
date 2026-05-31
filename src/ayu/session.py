@@ -1,4 +1,5 @@
 from datetime import datetime
+import json
 from typing import Literal
 from uuid import uuid4
 
@@ -16,13 +17,16 @@ class SessionMessage(BaseModel):
     content: str
     name: str | None = None
     tool_call_id: str | None = None
+    tool_calls_json: str | None = None
 
-    def to_llm_message(self) -> dict[str, str]:
-        message = {"role": self.role, "content": self.content}
+    def to_llm_message(self) -> dict[str, str | list | None]:
+        message: dict[str, str | list | None] = {"role": self.role, "content": self.content}
         if self.name:
             message["name"] = self.name
         if self.tool_call_id:
             message["tool_call_id"] = self.tool_call_id
+        if self.tool_calls_json:
+            message["tool_calls"] = json.loads(self.tool_calls_json)
         return message
 
 
@@ -36,6 +40,7 @@ class Session(BaseModel):
         content: str,
         name: str | None = None,
         tool_call_id: str | None = None,
+        tool_calls_json: str | None = None,
     ) -> SessionMessage:
         event_id = uuid4().hex
         event_ts = datetime.now().astimezone().isoformat(timespec="milliseconds")
@@ -47,6 +52,7 @@ class Session(BaseModel):
             content=content,
             name=name,
             tool_call_id=tool_call_id,
+            tool_calls_json=tool_calls_json,
         )
         self.messages.append(msg)
         return msg

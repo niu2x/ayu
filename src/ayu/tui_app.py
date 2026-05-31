@@ -576,6 +576,9 @@ class AyuTUIApp(App):
         assistant_content = ""
         pending_line = ""
         tool_status_message: Markdown | None = None
+        # 收集当前轮次的 tool call，用于构造 assistant 消息
+        pending_tool_calls_for_session: list[dict[str, str]] = []
+        in_tool_round = False
         try:
             async for event in chat_stream(
                 self.runtime.session.to_llm_messages(),
@@ -603,6 +606,53 @@ class AyuTUIApp(App):
                         reasoning_message = None
                         stream_message = None
                         stream_chunks = []
+                        # 收集工具调用信息，用于后续保存到 session
+                        if event.tool_call_id:
+                            if not in_tool_round:
+                                in_tool_round = True
+                                pending_tool_calls_for_session = []
+                            pending_tool_calls_for_session.append({
+                                "id": event.tool_call_id,
+                                "name": event.tool_name or "",
+                                "arguments": event.tool_arguments or "",
+                            })
+                    reasoning_message = None
+                    continue
+                if event.type == "tool_result":
+                    self.logger.info(event.text)
+                    if tool_status_message is None:
+                        tool_status_message = Markdown("", classes="chat-message message-ai")
+                        chat_panel.mount(tool_status_message)
+                    tool_status_message.update(f"✅ {event.text}")
+                    chat_panel.scroll_end(animate=False)
+                    # 保存 assistant 消息（含 tool_calls）
+                    if in_tool_round and pending_tool_calls_for_session:
+                        import json
+                        tool_calls_json = json.dumps([
+                            {
+                                "id": tc["id"],
+                                "type": "function",
+                                "function": {
+                                    "name": tc["name"],
+                                    "arguments": tc["arguments"],
+                                },
+                            }
+                            for tc in pending_tool_calls_for_session
+                        ], ensure_ascii=False)
+                        await self.runtime.add_message(
+                            role="assistant",
+                            content="",
+                            tool_calls_json=tool_calls_json,
+                        )
+                        in_tool_round = False
+                        pending_tool_calls_for_session = []
+                    # 保存 tool 结果
+                    await self.runtime.add_message(
+                        role="tool",
+                        content=event.tool_result or "",
+                        tool_call_id=event.tool_call_id or "",
+                        name=event.tool_name,
+                    )
                     reasoning_message = None
                     continue
                 if stream_message is None:
@@ -621,6 +671,25 @@ class AyuTUIApp(App):
             if thinking is not None:
                 thinking.remove()
                 thinking = None
+        # 如果有残余的 tool_calls（理论上不会发生），也保存
+        if in_tool_round and pending_tool_calls_for_session:
+            import json
+            tool_calls_json = json.dumps([
+                {
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {
+                        "name": tc["name"],
+                        "arguments": tc["arguments"],
+                    },
+                }
+                for tc in pending_tool_calls_for_session
+            ], ensure_ascii=False)
+            await self.runtime.add_message(
+                role="assistant",
+                content="",
+                tool_calls_json=tool_calls_json,
+            )
         await self.runtime.add_message("assistant", assistant_content)
         self._set_ai_working(False)
         self.logger.info("模型响应完成")

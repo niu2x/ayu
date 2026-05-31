@@ -22,6 +22,7 @@ class StoredMessage(BaseModel):
     content: str
     name: str | None = None
     tool_call_id: str | None = None
+    tool_calls_json: str | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
 
 

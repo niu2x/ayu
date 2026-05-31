@@ -18,8 +18,14 @@ _runtime_client: AsyncOpenAI | None = None
 
 
 class StreamEvent(BaseModel):
-    type: Literal["reasoning", "content", "tool_call"]
+    type: Literal["reasoning", "content", "tool_call", "tool_result"]
     text: str
+    # tool_call 事件
+    tool_call_id: str | None = None
+    tool_name: str | None = None
+    tool_arguments: str | None = None
+    # tool_result 事件
+    tool_result: str | None = None
 
 
 def _build_openai_client(provider_config: LLMProviderConfig) -> AsyncOpenAI:
@@ -195,7 +201,13 @@ async def _chat_openai_stream(
                 command_text = parsed_arguments.get("command")
                 if isinstance(command_text, str) and command_text.strip():
                     tool_call_text = f"正在调用工具: {tool_name} -> `{command_text}`"
-            yield StreamEvent(type="tool_call", text=tool_call_text)
+            yield StreamEvent(
+                type="tool_call",
+                text=tool_call_text,
+                tool_call_id=tool_id,
+                tool_name=tool_name,
+                tool_arguments=arguments,
+            )
             assistant_tool_calls.append(
                 {
                     "id": tool_id,
@@ -223,7 +235,13 @@ async def _chat_openai_stream(
                 command_text = parsed_arguments.get("command")
                 if isinstance(command_text, str) and command_text.strip():
                     tool_done_text = f"工具调用完成: {tool_name} -> `{command_text}`"
-            yield StreamEvent(type="tool_call", text=tool_done_text)
+            yield StreamEvent(
+                type="tool_result",
+                text=tool_done_text,
+                tool_call_id=tool_id,
+                tool_name=tool_name,
+                tool_result=tool_result,
+            )
             messages.append(
                 {
                     "role": "tool",

@@ -32,6 +32,7 @@
 | content | TEXT | 消息内容 |
 | name | TEXT | tool 消息的函数名 |
 | tool_call_id | TEXT | tool 消息关联的调用 ID |
+| tool_calls_json | TEXT | assistant 消息的 tool_calls 数组（JSON 字符串） |
 | metadata | TEXT | JSON 字符串 |
 
 索引：`idx_messages_session_ts` on `messages(session_id, event_ts)`
@@ -41,8 +42,6 @@
 默认路径：`~/.local/share/ayu/ayu.db`（通过 `PlatformDirs.user_data_dir` 计算）
 
 可通过 `SqliteBackend(db_path=Path(...))` 自定义路径。
-
-### 使用方式
 
 ```python
 from ayu.storage import create_backend
@@ -69,3 +68,5 @@ backend = create_backend("sqlite", db_path=Path("/tmp/ayu.db"))
 - 会话删除级联删除关联消息
 - 消息列表按 `event_ts ASC` 排序（与追加顺序一致）
 - 不支持 FTS 全文搜索（`bm25=False`）、不支持向量搜索（`vector=False`）、不支持事务（`transactions=False`）
+- `tool_calls_json` 列存储 assistant 消息中的工具调用结构（OpenAI API 格式的 `tool_calls` 数组 JSON），工具调用消息不再丢失上下文
+- 旧数据库通过 `ALTER TABLE ADD COLUMN` 自动迁移（捕获 `OperationalError` 忽略已存在列）
