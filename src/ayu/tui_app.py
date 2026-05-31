@@ -297,7 +297,7 @@ class AyuTUIApp(App):
         display: none;
     }
     Input {
-        margin: 0 1 0 1;
+        margin: 0 1 1 1;
     }
     #ai-status {
         margin: 0 1 1 1;
