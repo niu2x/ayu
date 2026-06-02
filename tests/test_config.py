@@ -1,4 +1,4 @@
-from ayu.config import Config, State, ModelConfig, LLMProviderConfig, LLMConfig
+from ayu.config import Config, State, ModelConfig, LLMProviderConfig
 
 
 def test_config_defaults() -> None:
