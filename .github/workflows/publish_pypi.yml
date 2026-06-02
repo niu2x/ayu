@@ -125,7 +125,7 @@ jobs:
       - name: Verify distribution
         run: |
           ls -la dist/
-          uv run python -m twine check dist/*
+          uvx twine check dist/*
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
