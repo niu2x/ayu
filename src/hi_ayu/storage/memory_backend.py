@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 
-from ayu.storage.interfaces import PersistenceBackend
-from ayu.storage.models import MessageQuery, StorageCapabilities, StoredMessage, StoredSession
+from hi_ayu.storage.interfaces import PersistenceBackend
+from hi_ayu.storage.models import MessageQuery, StorageCapabilities, StoredMessage, StoredSession
 
 
 class InMemoryBackend(PersistenceBackend):

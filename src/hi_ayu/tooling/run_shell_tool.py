@@ -5,9 +5,9 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
-from ayu.shell_exec import run_shell_command
-from ayu.tooling.common import compute_shell_command_hash, resolve_target_path
-from ayu.tooling.permission_actions import RUN_SHELL_ACTION
+from hi_ayu.shell_exec import run_shell_command
+from hi_ayu.tooling.common import compute_shell_command_hash, resolve_target_path
+from hi_ayu.tooling.permission_actions import RUN_SHELL_ACTION
 
 
 class RunShellParameters(BaseModel):
@@ -219,7 +219,7 @@ def register_run_shell_tool(registry: ToolRegistryLike, workspace_root: Path) ->
         workdir: str | None = None,
         max_output_bytes: int = 51200,
     ) -> str:
-        from ayu.tools import PermissionRequest
+        from hi_ayu.tools import PermissionRequest
 
         cleaned_command = command.strip()
         if not cleaned_command:

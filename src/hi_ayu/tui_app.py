@@ -12,10 +12,10 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, Input, Markdown, OptionList, Static
 from textual.widgets.option_list import Option
 
-from ayu.llm import chat_stream, format_tool_display
-from ayu.config import DIRS
-from ayu.storage import StoredSession
-from ayu.tools import PermissionRequest
+from hi_ayu.llm import chat_stream, format_tool_display
+from hi_ayu.config import DIRS
+from hi_ayu.storage import StoredSession
+from hi_ayu.tools import PermissionRequest
 
 
 class ChatPanel(VerticalScroll):
@@ -336,9 +336,9 @@ class AyuTUIApp(App):
         yield Footer()
 
     async def on_mount(self) -> None:
-        from ayu.chat_runtime import build_chat_runtime
-        from ayu.storage import create_backend
-        from ayu.system_prompt import build_system_prompt
+        from hi_ayu.chat_runtime import build_chat_runtime
+        from hi_ayu.storage import create_backend
+        from hi_ayu.system_prompt import build_system_prompt
 
         backend = create_backend("sqlite")
         await backend.setup()
@@ -376,7 +376,7 @@ class AyuTUIApp(App):
             return
         self._session_persisted = True
         from datetime import datetime
-        from ayu.storage import StoredMessage, StoredSession
+        from hi_ayu.storage import StoredMessage, StoredSession
         now = datetime.now().astimezone().isoformat(timespec="milliseconds")
         await self.runtime.backend.create_session(
             StoredSession(id=self.runtime.session.id, created_at=now, updated_at=now)
@@ -549,8 +549,8 @@ class AyuTUIApp(App):
         self.push_screen(ModelPickerScreen(options), self.on_model_selected)
 
     def on_model_selected(self, selected: str | None) -> None:
-        from ayu.config import save_state
-        from ayu.llm import update_runtime_selection
+        from hi_ayu.config import save_state
+        from hi_ayu.llm import update_runtime_selection
 
         self.query_one("#chat-input", Input).focus()
         if selected is None:
@@ -787,7 +787,7 @@ class AyuTUIApp(App):
             await self.runtime.backend.close()
 
     async def warmup_llm(self) -> None:
-        from ayu.llm import warmup_stream
+        from hi_ayu.llm import warmup_stream
 
         self.logger.info("开始预热模型连接")
         try:

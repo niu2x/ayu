@@ -4,9 +4,9 @@ from pathlib import Path
 
 import aiosqlite
 
-from ayu.config import DIRS
-from ayu.storage.interfaces import PersistenceBackend
-from ayu.storage.models import MessageQuery, StorageCapabilities, StoredMessage, StoredSession
+from hi_ayu.config import DIRS
+from hi_ayu.storage.interfaces import PersistenceBackend
+from hi_ayu.storage.models import MessageQuery, StorageCapabilities, StoredMessage, StoredSession
 
 
 class SqliteBackend(PersistenceBackend):

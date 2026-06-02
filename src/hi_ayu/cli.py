@@ -26,8 +26,8 @@ def main(
     model: str = typer.Option("", "--model", help="临时模型名（需与 --api-key --base-url 同时使用）"),
     disable_all_tools: bool = typer.Option(False, "--disable-all-tools", help="禁用所有工具（不注册）"),
 ) -> None:
-    from ayu.llm import set_runtime_override
-    from ayu.tools import set_tools_disabled
+    from hi_ayu.llm import set_runtime_override
+    from hi_ayu.tools import set_tools_disabled
 
     if api_key or base_url or model:
         if not (api_key and base_url and model):
@@ -39,7 +39,7 @@ def main(
         set_tools_disabled(True)
 
     if ctx.invoked_subcommand is None:
-        from ayu.tui_app import AyuTUIApp
+        from hi_ayu.tui_app import AyuTUIApp
         AyuTUIApp().run()
 
 
@@ -52,10 +52,10 @@ def chat(
 
 
 async def _run_single_turn(message: str) -> None:
-    from ayu.chat_runtime import build_chat_runtime
-    from ayu.llm import chat_stream
-    from ayu.storage.memory_backend import InMemoryBackend
-    from ayu.system_prompt import build_system_prompt
+    from hi_ayu.chat_runtime import build_chat_runtime
+    from hi_ayu.llm import chat_stream
+    from hi_ayu.storage.memory_backend import InMemoryBackend
+    from hi_ayu.system_prompt import build_system_prompt
 
     backend = InMemoryBackend()
     await backend.setup()
@@ -80,21 +80,21 @@ def serve(
     port: int = typer.Option(8000, "--port", "-p", help="Bind port"),
     workers: int = typer.Option(1, "--workers", "-w", help="Number of workers"),
 ) -> None:
-    from ayu.server import run_server
+    from hi_ayu.server import run_server
     run_server(host=host, port=port, workers=workers)
 
 
 @config_app.command()
 def show() -> None:
     """查看完整 config.json"""
-    from ayu.config import load_config
+    from hi_ayu.config import load_config
     console.print(load_config().model_dump_json(indent=2))
 
 
 @config_app.command()
 def path() -> None:
     """显示 config.json 路径"""
-    from ayu.config import get_config_path
+    from hi_ayu.config import get_config_path
     console.print(get_config_path())
 
 
@@ -106,7 +106,7 @@ def set_provider(
     api_style: str = typer.Option("openai", "--api-style", "-s", help="API 风格 (openai/anthropic/google)"),
 ) -> None:
     """添加或更新一个 LLM 提供商"""
-    from ayu.config import LLMProviderConfig, load_config, save_config
+    from hi_ayu.config import LLMProviderConfig, load_config, save_config
     config = load_config()
     config.llm.providers[name] = LLMProviderConfig(
         api_style=api_style, api_key=api_key, base_url=base_url
@@ -120,7 +120,7 @@ def remove_provider(
     name: str = typer.Argument(help="提供商名称"),
 ) -> None:
     """删除一个 LLM 提供商"""
-    from ayu.config import load_config, save_config
+    from hi_ayu.config import load_config, save_config
     config = load_config()
     if name not in config.llm.providers:
         console.print(f"提供商 [bold]{name}[/] 不存在")
@@ -138,7 +138,7 @@ def set_model(
     temperature: float = typer.Option(0.7, "--temperature", "-t", help="温度"),
 ) -> None:
     """在指定提供商下添加或更新一个模型"""
-    from ayu.config import ModelConfig, load_config, save_config
+    from hi_ayu.config import ModelConfig, load_config, save_config
     config = load_config()
     if provider not in config.llm.providers:
         console.print(f"提供商 [bold]{provider}[/] 不存在，请先添加")
@@ -156,7 +156,7 @@ def remove_model(
     name: str = typer.Argument(help="模型名称"),
 ) -> None:
     """从指定提供商删除一个模型"""
-    from ayu.config import load_config, save_config
+    from hi_ayu.config import load_config, save_config
     config = load_config()
     if provider not in config.llm.providers:
         console.print(f"提供商 [bold]{provider}[/] 不存在")
@@ -172,12 +172,12 @@ def remove_model(
 @state_app.command("show")
 def state_show() -> None:
     """查看当前 state.json"""
-    from ayu.config import load_state
+    from hi_ayu.config import load_state
     console.print(load_state().model_dump_json(indent=2))
 
 
 @state_app.command("path")
 def state_path() -> None:
     """显示 state.json 路径"""
-    from ayu.config import get_state_path
+    from hi_ayu.config import get_state_path
     console.print(get_state_path())

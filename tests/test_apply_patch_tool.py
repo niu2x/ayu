@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from ayu.tools import PermissionRequest, build_default_tool_registry
-from ayu.tooling.run_shell_tool import _extract_command_path_accesses, _extract_redirects, _split_commands
+from hi_ayu.tools import PermissionRequest, build_default_tool_registry
+from hi_ayu.tooling.run_shell_tool import _extract_command_path_accesses, _extract_redirects, _split_commands
 
 
 @pytest.mark.asyncio

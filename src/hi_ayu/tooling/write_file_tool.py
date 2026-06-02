@@ -3,8 +3,8 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
-from ayu.tooling.common import resolve_target_path
-from ayu.tooling.permission_actions import WRITE_FILE_ACTION
+from hi_ayu.tooling.common import resolve_target_path
+from hi_ayu.tooling.permission_actions import WRITE_FILE_ACTION
 
 
 class WriteFileParameters(BaseModel):
@@ -26,7 +26,7 @@ def register_write_file_tool(registry: ToolRegistryLike, workspace_root: Path) -
         parameters_model=WriteFileParameters,
     )
     async def write_file(path: str, content: str, overwrite: bool = True) -> str:
-        from ayu.tools import PermissionRequest
+        from hi_ayu.tools import PermissionRequest
 
         target = resolve_target_path(path, workspace_root)
         if target.is_relative_to(workspace_root):

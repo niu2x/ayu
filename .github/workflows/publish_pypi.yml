@@ -4,14 +4,6 @@ on:
   release:
     types: [published]
   workflow_dispatch:
-    inputs:
-      publish_env:
-        description: "发布目标环境"
-        type: choice
-        options:
-          - pypi
-          - testpypi
-        default: testpypi
 
 permissions:
   contents: read
@@ -22,7 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.get_version.outputs.version }}
-      publish_env: ${{ steps.set_env.outputs.publish_env }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,15 +34,6 @@ jobs:
         run: |
           VERSION=$(uv run python -c "import tomllib; f=open('pyproject.toml','rb'); print(tomllib.load(f)['project']['version'])")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Determine publish environment
-        id: set_env
-        run: |
-          if [[ "${{ github.event_name }}" == "release" ]]; then
-            echo "publish_env=pypi" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish_env=${{ inputs.publish_env }}" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Verify git tag matches pyproject.toml version (on release)
         if: github.event_name == 'release'
@@ -105,7 +87,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ needs.check-version.outputs.version }}
-      publish_env: ${{ needs.check-version.outputs.publish_env }}
     steps:
       - uses: actions/checkout@v4
 
@@ -135,12 +116,12 @@ jobs:
           retention-days: 5
 
   publish:
-    name: Publish to ${{ needs.build.outputs.publish_env }}
+    name: Publish to PyPI
     needs: build
     runs-on: ubuntu-latest
     environment:
-      name: ${{ needs.build.outputs.publish_env == 'pypi' && 'pypi' || 'testpypi' }}
-      url: ${{ needs.build.outputs.publish_env == 'pypi' && 'https://pypi.org/project/ayu/' || 'https://test.pypi.org/project/ayu/' }}
+      name: pypi
+      url: https://pypi.org/project/hi-ayu/
     permissions:
       id-token: write
     steps:
@@ -151,23 +132,14 @@ jobs:
           path: dist/
 
       - name: Publish to PyPI (OIDC trusted publishing)
-        if: needs.build.outputs.publish_env == 'pypi'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
-          verbose: true
-
-      - name: Publish to TestPyPI (OIDC trusted publishing)
-        if: needs.build.outputs.publish_env == 'testpypi'
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: dist/
-          repository-url: https://test.pypi.org/legacy/
           verbose: true
 
   create-release:
     name: Create GitHub Release
-    if: github.event_name == 'workflow_dispatch' && needs.build.outputs.publish_env == 'pypi'
+    if: github.event_name == 'workflow_dispatch'
     needs: publish
     runs-on: ubuntu-latest
     permissions:

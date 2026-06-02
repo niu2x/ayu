@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pytest
 
-from ayu.storage import MessageQuery, SqliteBackend, StoredMessage, StoredSession
+from hi_ayu.storage import MessageQuery, SqliteBackend, StoredMessage, StoredSession
 
 
 def _now_iso() -> str:

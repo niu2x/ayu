@@ -55,22 +55,22 @@ print("=" * 60)
 print()
 
 # 1. 语法检查
-run("syntax", "语法检查（py_compile）", ["uv", "run", "python", "-m", "py_compile", "src/ayu/cli.py"])
-run("syntax", "语法检查（py_compile）", ["uv", "run", "python", "-m", "py_compile", "src/ayu/config.py"])
-run("syntax", "语法检查（py_compile）", ["uv", "run", "python", "-m", "py_compile", "src/ayu/tui_app.py"])
-run("syntax", "语法检查（py_compile）", ["uv", "run", "python", "-m", "py_compile", "src/ayu/server.py"])
-run("syntax", "语法检查（py_compile）", ["uv", "run", "python", "-m", "py_compile", "src/ayu/llm.py"])
+run("syntax", "语法检查（py_compile）", ["uv", "run", "python", "-m", "py_compile", "src/hi_ayu/cli.py"])
+run("syntax", "语法检查（py_compile）", ["uv", "run", "python", "-m", "py_compile", "src/hi_ayu/config.py"])
+run("syntax", "语法检查（py_compile）", ["uv", "run", "python", "-m", "py_compile", "src/hi_ayu/tui_app.py"])
+run("syntax", "语法检查（py_compile）", ["uv", "run", "python", "-m", "py_compile", "src/hi_ayu/server.py"])
+run("syntax", "语法检查（py_compile）", ["uv", "run", "python", "-m", "py_compile", "src/hi_ayu/llm.py"])
 
 print()
 
 # 2. import 验证
-run("import", "模块导入验证", ["uv", "run", "python", "-c", "import ayu; print('ok')"])
+run("import", "模块导入验证", ["uv", "run", "python", "-c", "import hi_ayu; print('ok')"])
 
 print()
 
 # 3. ruff 检查（含类型注解和通用规则）
-run("ruff", "ruff 静态分析（通用规则）", ["uv", "run", "ruff", "check", "src/ayu/"])
-run("ruff-ann", "ruff 类型注解检查（ANN）", ["uv", "run", "ruff", "check", "--select", "ANN", "src/ayu/"])
+run("ruff", "ruff 静态分析（通用规则）", ["uv", "run", "ruff", "check", "src/hi_ayu/"])
+run("ruff-ann", "ruff 类型注解检查（ANN）", ["uv", "run", "ruff", "check", "--select", "ANN", "src/hi_ayu/"])
 
 print()
 
@@ -82,7 +82,7 @@ print()
 # 5. Pydantic 合规 - 检查是否用了 dataclass 或 TypedDict
 print("  [pydantic] Pydantic v2 合规检查...")
 pydantic_errors: list[str] = []
-for pyfile in glob.glob("src/ayu/**/*.py", recursive=True):
+for pyfile in glob.glob("src/hi_ayu/**/*.py", recursive=True):
     with open(pyfile) as f:
         content = f.read()
         if "from dataclasses import" in content or "import dataclass" in content:

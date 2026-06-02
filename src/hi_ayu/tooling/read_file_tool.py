@@ -3,8 +3,8 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
-from ayu.tooling.common import resolve_target_path
-from ayu.tooling.permission_actions import READ_FILE_ACTION
+from hi_ayu.tooling.common import resolve_target_path
+from hi_ayu.tooling.permission_actions import READ_FILE_ACTION
 
 
 class ReadFileParameters(BaseModel):
@@ -26,7 +26,7 @@ def register_read_file_tool(registry: ToolRegistryLike, workspace_root: Path) ->
         parameters_model=ReadFileParameters,
     )
     async def read_file(path: str, start_line: int = 1, line_count: int = 200) -> str:
-        from ayu.tools import PermissionRequest
+        from hi_ayu.tools import PermissionRequest
 
         if start_line < 1:
             return "读取失败: start_line 必须 >= 1"

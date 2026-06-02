@@ -5,8 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from ayu.tooling.permission_actions import PermissionAction
-from ayu.tooling import (
+from hi_ayu.tooling.permission_actions import PermissionAction
+from hi_ayu.tooling import (
     register_apply_patch_tool,
     register_feedback_tool,
     register_read_file_tool,

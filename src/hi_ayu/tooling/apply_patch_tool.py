@@ -4,7 +4,7 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel, Field
 
-from ayu.tooling.permission_actions import APPLY_PATCH_ACTION
+from hi_ayu.tooling.permission_actions import APPLY_PATCH_ACTION
 
 
 class ApplyPatchParameters(BaseModel):
@@ -368,7 +368,7 @@ async def _check_path_permission(
     path: Path,
     workspace_root: Path,
 ) -> bool:
-    from ayu.tools import PermissionRequest
+    from hi_ayu.tools import PermissionRequest
 
     if path.is_relative_to(workspace_root):
         return True

@@ -1,6 +1,6 @@
 [project]
-name = "ayu"
-version = "0.1.2"
+name = "hi-ayu"
+version = "0.1.3"
 description = "Add your description here"
 readme = "README.md"
 authors = [
@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-ayu = "ayu:main"
+ayu = "hi_ayu:main"
 
 [build-system]
 requires = ["uv_build>=0.8.17,<0.9.0"]

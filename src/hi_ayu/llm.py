@@ -7,10 +7,10 @@ from typing import Literal
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
-from ayu.config import LLMProviderConfig, ModelConfig, load_config, load_state
-from ayu.tools import ToolRegistry
+from hi_ayu.config import LLMProviderConfig, ModelConfig, load_config, load_state
+from hi_ayu.tools import ToolRegistry
 
-logger = logging.getLogger("ayu.llm")
+logger = logging.getLogger("hi_ayu.llm")
 
 _runtime_config = None
 _runtime_state = None

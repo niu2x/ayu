@@ -1,10 +1,10 @@
 from collections.abc import Sequence
 
-from ayu.config import Config, State, load_config, load_state
-from ayu.llm import initialize_runtime
-from ayu.session import Session, SessionMessage
-from ayu.storage import MessageQuery, PersistenceBackend, StoredMessage, StoredSession
-from ayu.tools import ToolRegistry, build_default_tool_registry
+from hi_ayu.config import Config, State, load_config, load_state
+from hi_ayu.llm import initialize_runtime
+from hi_ayu.session import Session, SessionMessage
+from hi_ayu.storage import MessageQuery, PersistenceBackend, StoredMessage, StoredSession
+from hi_ayu.tools import ToolRegistry, build_default_tool_registry
 
 
 class ChatRuntime:

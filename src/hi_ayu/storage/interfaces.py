@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from typing import Protocol
 
-from ayu.storage.models import MessageQuery, StorageCapabilities, StoredMessage, StoredSession
+from hi_ayu.storage.models import MessageQuery, StorageCapabilities, StoredMessage, StoredSession
 
 
 class SessionStore(Protocol):

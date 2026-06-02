@@ -1,6 +1,6 @@
-from ayu.storage.interfaces import PersistenceBackend
-from ayu.storage.memory_backend import InMemoryBackend
-from ayu.storage.sqlite_backend import SqliteBackend
+from hi_ayu.storage.interfaces import PersistenceBackend
+from hi_ayu.storage.memory_backend import InMemoryBackend
+from hi_ayu.storage.sqlite_backend import SqliteBackend
 
 
 def create_backend(kind: str = "memory", **kwargs: object) -> PersistenceBackend:
