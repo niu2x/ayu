@@ -76,7 +76,7 @@ jobs:
         run: uv run ruff check .
 
       - name: Type check
-        run: uv run python -c "import ayu; print('Import OK')"
+        run: uv run python -c "import hi_ayu; print('Import OK')"
 
       - name: Run tests
         run: uv run pytest --verbose --tb=short
