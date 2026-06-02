@@ -7,7 +7,7 @@ from typing import Literal
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
-from ayu.config import LLMProviderConfig, load_config, load_state
+from ayu.config import LLMProviderConfig, ModelConfig, load_config, load_state
 from ayu.tools import ToolRegistry
 
 logger = logging.getLogger("ayu.llm")
@@ -15,6 +15,8 @@ logger = logging.getLogger("ayu.llm")
 _runtime_config = None
 _runtime_state = None
 _runtime_client: AsyncOpenAI | None = None
+# 临时覆盖：通过 CLI 全局参数 --api-key/--base-url/--model 注入，不持久化
+_runtime_override: dict[str, str] | None = None
 
 
 class StreamEvent(BaseModel):
@@ -93,6 +95,16 @@ def _build_openai_client(provider_config: LLMProviderConfig) -> AsyncOpenAI:
     )
 
 
+def set_runtime_override(
+    api_key: str | None, base_url: str | None, model: str | None
+) -> None:
+    global _runtime_override
+    if api_key and base_url and model:
+        _runtime_override = {"api_key": api_key, "base_url": base_url, "model": model}
+    else:
+        _runtime_override = None
+
+
 def initialize_runtime(force: bool = False) -> None:
     global _runtime_config, _runtime_state, _runtime_client
 
@@ -102,6 +114,19 @@ def initialize_runtime(force: bool = False) -> None:
     _runtime_config = load_config()
     _runtime_state = load_state()
     _runtime_client = None
+
+    if _runtime_override:
+        temp_provider = LLMProviderConfig(
+            api_style="openai",
+            api_key=_runtime_override["api_key"],
+            base_url=_runtime_override["base_url"],
+            models={_runtime_override["model"]: ModelConfig()},
+        )
+        _runtime_config.llm.providers["临时provider"] = temp_provider
+        _runtime_state.provider = "临时provider"
+        _runtime_state.model = _runtime_override["model"]
+        _runtime_client = _build_openai_client(temp_provider)
+        return
 
     if _runtime_state.provider == "dummy":
         return

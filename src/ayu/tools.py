@@ -52,7 +52,7 @@ class ToolRegistry:
         if request.key in self._session_permissions:
             return True
         if self._permission_handler is None:
-            return True
+            return False
         decision = await self._permission_handler(request)
         if decision == "allow_session":
             self._session_permissions.add(request.key)
@@ -118,8 +118,19 @@ class ToolRegistry:
         return str(result)
 
 
+_tools_disabled: bool = False
+
+
+def set_tools_disabled(disabled: bool = True) -> None:
+    global _tools_disabled
+    _tools_disabled = disabled
+
+
 def build_default_tool_registry() -> ToolRegistry:
     registry = ToolRegistry()
+    if _tools_disabled:
+        return registry
+
     workspace_root = Path.cwd().resolve()
 
     register_write_file_tool(registry, workspace_root)

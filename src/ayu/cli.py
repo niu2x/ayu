@@ -1,3 +1,6 @@
+import asyncio
+import sys
+
 import typer
 from rich.console import Console
 
@@ -16,10 +19,59 @@ app.add_typer(state_app, name="state")
 
 
 @app.callback(invoke_without_command=True)
-def main(ctx: typer.Context) -> None:
+def main(
+    ctx: typer.Context,
+    api_key: str = typer.Option("", "--api-key", help="临时 API key（需与 --base-url --model 同时使用）"),
+    base_url: str = typer.Option("", "--base-url", help="临时 API 地址（需与 --api-key --model 同时使用）"),
+    model: str = typer.Option("", "--model", help="临时模型名（需与 --api-key --base-url 同时使用）"),
+    disable_all_tools: bool = typer.Option(False, "--disable-all-tools", help="禁用所有工具（不注册）"),
+) -> None:
+    from ayu.llm import set_runtime_override
+    from ayu.tools import set_tools_disabled
+
+    if api_key or base_url or model:
+        if not (api_key and base_url and model):
+            console.print("错误：--api-key、--base-url、--model 必须同时使用")
+            raise typer.Exit(1)
+        set_runtime_override(api_key, base_url, model)
+
+    if disable_all_tools:
+        set_tools_disabled(True)
+
     if ctx.invoked_subcommand is None:
         from ayu.tui_app import AyuTUIApp
         AyuTUIApp().run()
+
+
+@app.command()
+def chat(
+    message: str = typer.Argument(..., help="单次对话消息"),
+) -> None:
+    """单次对话模式：不打开 TUI，不持久化，输出到 stdout"""
+    asyncio.run(_run_single_turn(message))
+
+
+async def _run_single_turn(message: str) -> None:
+    from ayu.chat_runtime import build_chat_runtime
+    from ayu.llm import chat_stream
+    from ayu.storage.memory_backend import InMemoryBackend
+    from ayu.system_prompt import build_system_prompt
+
+    backend = InMemoryBackend()
+    await backend.setup()
+    runtime = build_chat_runtime(backend)
+
+    runtime.session.add_message("system", build_system_prompt())
+    runtime.session.add_message("user", message)
+
+    async for event in chat_stream(
+        runtime.session.to_llm_messages(),
+        tool_registry=runtime.tool_registry,
+    ):
+        if event.type == "content":
+            sys.stdout.write(event.text)
+            sys.stdout.flush()
+    sys.stdout.write("\n")
 
 
 @app.command()
