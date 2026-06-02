@@ -1,0 +1,196 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      publish_env:
+        description: "发布目标环境"
+        type: choice
+        options:
+          - pypi
+          - testpypi
+        default: testpypi
+
+permissions:
+  contents: read
+
+jobs:
+  check-version:
+    name: Check version consistency
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      publish_env: ${{ steps.set_env.outputs.publish_env }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Get version from pyproject.toml
+        id: get_version
+        run: |
+          VERSION=$(uv run python -c "import tomllib; f=open('pyproject.toml','rb'); print(tomllib.load(f)['project']['version'])")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Determine publish environment
+        id: set_env
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "publish_env=pypi" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish_env=${{ inputs.publish_env }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify git tag matches pyproject.toml version (on release)
+        if: github.event_name == 'release'
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/}"
+          TAG_VERSION="${TAG_VERSION#v}"
+          PKG_VERSION="${{ steps.get_version.outputs.version }}"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Git tag version ($TAG_VERSION) does not match pyproject.toml version ($PKG_VERSION)"
+            exit 1
+          fi
+          echo "Version一致: $PKG_VERSION"
+
+  test:
+    name: Run tests
+    needs: check-version
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version:
+          - "3.13"
+      fail-fast: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type check
+        run: uv run python -c "import ayu; print('Import OK')"
+
+      - name: Run tests
+        run: uv run pytest --verbose --tb=short
+
+  build:
+    name: Build distribution
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ needs.check-version.outputs.version }}
+      publish_env: ${{ needs.check-version.outputs.publish_env }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Build package
+        run: uv build
+
+      - name: Verify distribution
+        run: |
+          ls -la dist/
+          uv run python -m twine check dist/*
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 5
+
+  publish:
+    name: Publish to ${{ needs.build.outputs.publish_env }}
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ needs.build.outputs.publish_env == 'pypi' && 'pypi' || 'testpypi' }}
+      url: ${{ needs.build.outputs.publish_env == 'pypi' && 'https://pypi.org/project/ayu/' || 'https://test.pypi.org/project/ayu/' }}
+    permissions:
+      id-token: write
+    steps:
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI (OIDC trusted publishing)
+        if: needs.build.outputs.publish_env == 'pypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          verbose: true
+
+      - name: Publish to TestPyPI (OIDC trusted publishing)
+        if: needs.build.outputs.publish_env == 'testpypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          repository-url: https://test.pypi.org/legacy/
+          verbose: true
+
+  create-release:
+    name: Create GitHub Release
+    if: github.event_name == 'workflow_dispatch' && needs.build.outputs.publish_env == 'pypi'
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.build.outputs.version }}
+          name: v${{ needs.build.outputs.version }}
+          body: |
+            ## ayu v${{ needs.build.outputs.version }}
+
+            查看 [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) 了解详情。
+          files: dist/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
